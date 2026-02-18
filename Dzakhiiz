@@ -1,0 +1,712 @@
+--[[
+    Maveryk Hub - Pet Swarm Simulator
+    Ultra Otimizado - Versão Estável
+    Desenvolvido por Maveryk1t
+]]
+
+-- Verificação segura da Rayfield
+local Rayfield
+local loadSuccess, loadResult = pcall(function()
+    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+end)
+
+if loadSuccess and loadResult then
+    Rayfield = loadResult
+else
+    -- Fallback: notificação no chat
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Maveryk Hub",
+        Text = "Failed to load Rayfield. Using fallback mode.",
+        Duration = 5
+    })
+    -- Criar interface simples alternativa
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Parent = game.CoreGui
+    
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0, 300, 0, 200)
+    Frame.Position = UDim2.new(0.5, -150, 0.5, -100)
+    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    Frame.Parent = ScreenGui
+    
+    local TextLabel = Instance.new("TextLabel")
+    TextLabel.Size = UDim2.new(1, 0, 0, 50)
+    TextLabel.Position = UDim2.new(0, 0, 0, 0)
+    TextLabel.Text = "Maveryk Hub - Fallback Mode"
+    TextLabel.TextColor3 = Color3.new(1, 1, 1)
+    TextLabel.BackgroundTransparency = 1
+    TextLabel.Parent = Frame
+    
+    Rayfield = {
+        CreateWindow = function() 
+            return {
+                CreateTab = function() 
+                    return {
+                        CreateSection = function() end,
+                        CreateButton = function() end,
+                        CreateToggle = function() end,
+                        CreateSlider = function() end,
+                        CreateLabel = function() 
+                            return { Set = function() end }
+                        end,
+                        CreateDropdown = function() end
+                    }
+                end
+            }
+        end
+    }
+end
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Verificação segura dos remotes
+local Remotes = ReplicatedStorage and ReplicatedStorage:FindFirstChild("Remotes")
+local Functions = Remotes and Remotes:FindFirstChild("Functions")
+local Events = Remotes and Remotes:FindFirstChild("Events")
+
+local CombatRemote = Functions and Functions:FindFirstChild("CombatRF")
+local CollectionRemote = Functions and Functions:FindFirstChild("CollectionRF")
+local HatchRemote = Events and Events:FindFirstChild("HatchEggEvent")
+local PlantRemote = Events and Events:FindFirstChild("PlantEggEvent")
+local FeedRemote = Events and Events:FindFirstChild("FeedEggEvent")
+local SacrificeRemote = Functions and Functions:FindFirstChild("SacrificeFunction")
+
+-- Funções seguras para chamar remotes
+local function safeCombat(...)
+    if CombatRemote then
+        pcall(CombatRemote.InvokeServer, CombatRemote, ...)
+    end
+end
+
+local function safeCollect(...)
+    if CollectionRemote then
+        pcall(CollectionRemote.InvokeServer, CollectionRemote, ...)
+    end
+end
+
+local function safeHatch()
+    if HatchRemote then
+        pcall(HatchRemote.FireServer, HatchRemote)
+    end
+end
+
+local function safePlant(zone)
+    if PlantRemote then
+        pcall(PlantRemote.FireServer, PlantRemote, zone)
+    end
+end
+
+local function safeFeed(nest)
+    if FeedRemote then
+        pcall(FeedRemote.FireServer, FeedRemote, nest)
+    end
+end
+
+local function safeSacrifice(pet)
+    if SacrificeRemote then
+        pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", pet)
+    end
+end
+
+-- Estado global
+local active = false
+local eggsSelected = {}
+local bossEnabled = {}
+local zoneCache = {}
+local activeBosses = {}
+local jumpConnection = nil
+local jumpCount = 0
+
+-- Cache de pets
+local petCache = {}
+local petCacheValid = false
+local nestsCache = nil
+local lastNestCacheUpdate = 0
+
+-- Controle de tarefas
+local loopThreads = {}
+local bossNextAttack = {}
+local startDebounce = false
+
+
+-- Lookup tables
+local bossZoneMap = {
+    Naga = "Zone2B1",
+    ["Lava Monster"] = "Zone5B1",
+    ["Tiki Monster"] = "Zone10B1",
+    ["The Frozen Ancient"] = "Zone12B1",
+    ["The Big 100M"] = "Zone12B3",
+    ["The Ethereal Everia"] = "Zone12B2",
+    ["Hornet Boss"] = "SummerEventZoneB1",
+    ["The Ice Serpent"] = "WinterEventZoneB1",
+    ["Great Sphinx"] = "ElementEventZoneB1",
+}
+
+-- Configurações
+local config = {
+    farmAllEnemies = false,
+    farmEnemiesSpeed = 0.05,
+    farmSummer = false,
+    farmWinter = false,
+    farmFood = false,
+    foodSpeed = 0.03,
+    farmBosses = false,
+    bossAttackSpeed = 0.03,
+    autoPlant = false,
+    autoHatch = false,
+    autoNests = false,
+    sacrificeLoopQueen = false,
+    sacrificeLoopKing = false,
+    sacrificeLoopFrozen = false,
+    sacrificeLoopWalrus = false,
+    doubleJump = false,
+    wallspeed = 16,
+}
+
+-- Lista de bosses
+local bossList = {
+    "Naga", "Lava Monster", "Tiki Monster",
+    "The Frozen Ancient", "The Big 100M", "The Ethereal Everia",
+    "Hornet Boss", "The Ice Serpent", "Great Sphinx"
+}
+for _, name in ipairs(bossList) do bossEnabled[name] = true end
+
+-- Cache permanente de zonas (pré-carregado)
+local zoneList = {
+    "SummerEvent1", "WinterEvent1", "EleEgg1", "6", "4", "15", "10", "27",
+    "30", "11", "34", "12.1", "1", "3", "7", "8", "9", "12", "13", "14",
+    "Boss1", "Boss2", "Boss4",
+    "SummerEventZone", "WinterEventZone", "Zone12.1",
+    "Zone2B1", "Zone5B1", "Zone10B1", "Zone12B1", "Zone12B3", "Zone12B2",
+    "SummerEventZoneB1", "WinterEventZoneB1", "ElementEventZoneB1"
+}
+for _, z in ipairs(zoneList) do
+    local success, result = pcall(function()
+        return Workspace.Zones:FindFirstChild(z)
+    end)
+    if success and result then
+        zoneCache[z] = result
+    end
+end
+
+-- Lista de ovos
+local eggData = {
+    { name = "Summer Egg", zone = "SummerEvent1" },
+    { name = "Winter Egg", zone = "WinterEvent1" },
+    { name = "Sphinx Egg", zone = "EleEgg1" },
+    { name = "Desert Egg", zone = "6" },
+    { name = "Swamp Egg", zone = "4" },
+    { name = "Sky Egg", zone = "15" },
+    { name = "Cosmos Egg", zone = "10" },
+    { name = "Void Egg", zone = "27" },
+    { name = "Tiki Egg", zone = "30" },
+    { name = "Tiki Island Egg", zone = "11" },
+    { name = "Draco Egg", zone = "34" },
+    { name = "Crystal Egg", zone = "12.1" },
+    { name = "Octopus Egg", zone = "30" },
+    { name = "Forest Egg", zone = "1" },
+    { name = "Frozen Egg", zone = "3" },
+    { name = "Magma Egg", zone = "7" },
+    { name = "Atlantis Egg", zone = "8" },
+    { name = "Aqua Egg", zone = "9" },
+    { name = "Egg Of Oblivion", zone = "12" },
+    { name = "Mythical Egg", zone = "13" },
+    { name = "Legendary Egg", zone = "14" },
+    { name = "Naga Boss Egg", zone = "Boss1" },
+    { name = "Lava Monster Boss Egg", zone = "Boss2" },
+    { name = "Tiki Boss Egg", zone = "Boss4" },
+}
+
+-- Funções auxiliares otimizadas
+local function getZone(name)
+    return zoneCache[name]
+end
+
+local function getPets()
+    if not petCacheValid then
+        if LocalPlayer.Character then
+            local pets = LocalPlayer.Character:FindFirstChild("Pets")
+            petCache = pets and pets:GetChildren() or {}
+        else
+            petCache = {}
+        end
+        petCacheValid = true
+    end
+    return petCache
+end
+
+-- Atualizar cache de pets quando mudar
+if LocalPlayer.CharacterAdded then
+    LocalPlayer.CharacterAdded:Connect(function()
+        petCacheValid = false
+    end)
+end
+
+if LocalPlayer.Character then
+    local success, result = pcall(function()
+        return LocalPlayer.Character.ChildAdded:Connect(function(child)
+            if child.Name == "Pets" then
+                petCacheValid = false
+            end
+        end)
+    end)
+end
+
+local function getNests()
+    local now = os.clock()
+    if now - lastNestCacheUpdate > 10 or not nestsCache or not nestsCache.Parent then
+        nestsCache = Workspace:FindFirstChild("Nests")
+        lastNestCacheUpdate = now
+    end
+    return nestsCache
+end
+
+local function canAttackBoss(bossName)
+    local now = os.clock()
+    if now >= (bossNextAttack[bossName] or 0) then
+        bossNextAttack[bossName] = now + config.bossAttackSpeed
+        return true
+    end
+    return false
+end
+
+-- ===== FUNÇÕES DE FARM =====
+
+local function tickEnemies()
+    if not (config.farmAllEnemies or config.farmSummer or config.farmWinter) then return end
+    
+    local pets = getPets()
+    if #pets == 0 then return end
+    
+    local idx = 1
+    if config.farmAllEnemies then
+        for _, zone in ipairs({"SummerEventZone", "WinterEventZone"}) do
+            local z = getZone(zone)
+            if z and z:FindFirstChild("Enemies") then
+                for _, e in ipairs(z.Enemies:GetChildren()) do
+                    safeCombat("AttackEnemy", e, pets[idx])
+                    idx = idx % #pets + 1
+                end
+            end
+        end
+    else
+        if config.farmSummer then
+            local z = getZone("SummerEventZone")
+            if z and z:FindFirstChild("Enemies") then
+                for _, e in ipairs(z.Enemies:GetChildren()) do
+                    safeCombat("AttackEnemy", e, pets[idx])
+                    idx = idx % #pets + 1
+                end
+            end
+        end
+        if config.farmWinter then
+            local z = getZone("WinterEventZone")
+            if z and z:FindFirstChild("Enemies") then
+                for _, e in ipairs(z.Enemies:GetChildren()) do
+                    safeCombat("AttackEnemy", e, pets[idx])
+                    idx = idx % #pets + 1
+                end
+            end
+        end
+    end
+end
+
+local function tickFood()
+    if not config.farmFood then return end
+    
+    local pets = getPets()
+    if #pets == 0 then return end
+    
+    local zone = getZone("Zone12.1")
+    if zone and zone:FindFirstChild("FoodSpawns") then
+        local foods = zone.FoodSpawns:GetChildren()
+        if #foods > 0 then
+            local idx = 1
+            for _, f in ipairs(foods) do
+                safeCollect("CollectFood", f, pets[idx])
+                idx = idx % #pets + 1
+            end
+        end
+    end
+end
+
+local function scanBosses()
+    if not config.farmBosses then return end
+    
+    local newActive = {}
+    for _, name in ipairs(bossList) do
+        if bossEnabled[name] then
+            local zone = getZone(bossZoneMap[name])
+            local enemy = zone and zone:FindFirstChild("Enemies") and zone.Enemies:FindFirstChild(name)
+            if enemy then
+                table.insert(newActive, enemy)
+            end
+        end
+    end
+    activeBosses = newActive
+end
+
+local function tickBosses()
+    if not config.farmBosses then return end
+    
+    local pets = getPets()
+    if #pets == 0 or #activeBosses == 0 then return end
+    
+    local idx = 1
+    for _, boss in ipairs(activeBosses) do
+        if boss and boss.Parent and canAttackBoss(boss.Name) then
+            safeCombat("AttackEnemy", boss, pets[idx])
+            idx = idx % #pets + 1
+        end
+    end
+end
+
+local function tickSacrifice()
+    if not (config.sacrificeLoopQueen or config.sacrificeLoopKing or 
+            config.sacrificeLoopFrozen or config.sacrificeLoopWalrus) then return end
+    
+    if config.sacrificeLoopQueen then
+        safeSacrifice("Queen Bee")
+    end
+    if config.sacrificeLoopKing then
+        safeSacrifice("King Bee")
+    end
+    if config.sacrificeLoopFrozen then
+        safeSacrifice("Frozen Werewolf")
+    end
+    if config.sacrificeLoopWalrus then
+        safeSacrifice("Walrus")
+    end
+end
+
+-- ===== EGGS ULTRA RÁPIDOS =====
+
+local function tickPlant()
+    if not config.autoPlant or #eggsSelected == 0 then return end
+    
+    for _, zone in ipairs(eggsSelected) do
+        for _ = 1, 9 do
+            safePlant(zone)
+        end
+    end
+end
+
+local function tickHatch()
+    if not config.autoHatch then return end
+    safeHatch()
+end
+
+local function tickNests()
+    if not config.autoNests then return end
+    
+    local nests = getNests()
+    if nests then
+        for _, nest in ipairs(nests:GetChildren()) do
+            safeFeed(nest)
+        end
+    end
+end
+
+-- ===== LOOP PRINCIPAL ÚNICO =====
+
+local function mainLoop()
+    while active do
+        tickBosses()
+        tickEnemies()
+        tickFood()
+        tickSacrifice()
+        tickPlant()
+        tickHatch()
+        tickNests()
+        task.wait(0.03)
+    end
+end
+
+local function bossScanLoop()
+    while active do
+        scanBosses()
+        task.wait(15)
+    end
+end
+
+-- ===== CONTROLE DE TAREFAS =====
+
+local function startLoop(name, func)
+    if loopThreads[name] then return end
+    loopThreads[name] = task.spawn(func)
+end
+
+local function stopLoop(name)
+    if loopThreads[name] then
+        task.cancel(loopThreads[name])
+        loopThreads[name] = nil
+    end
+end
+
+local function stopAllLoops()
+    for name, _ in pairs(loopThreads) do
+        task.cancel(loopThreads[name])
+        loopThreads[name] = nil
+    end
+    activeBosses = {}
+    petCacheValid = false
+end
+
+local function start()
+    if startDebounce or active then return end
+    startDebounce = true
+    task.delay(1, function() startDebounce = false end)
+    
+    active = true
+    petCacheValid = false
+    
+    startLoop("main", mainLoop)
+    startLoop("bossScan", bossScanLoop)
+end
+
+local function stop()
+    active = false
+    stopAllLoops()
+end
+
+-- Interface Rayfield (com verificação)
+local win
+if Rayfield and Rayfield.CreateWindow then
+    win = Rayfield:CreateWindow({
+        Name = "Maveryk Hub - Pet Swarm Simulator",
+        LoadingTitle = "Loading...",
+        LoadingSubtitle = "Ultra Otimizado",
+        ConfigurationSaving = { Enabled = true, FolderName = "MaverykHub", FileName = "Config" },
+        Theme = "Dark"
+    })
+else
+    -- Fallback: não criar janela
+    win = {
+        CreateTab = function() 
+            return {
+                CreateSection = function() end,
+                CreateButton = function() end,
+                CreateToggle = function() end,
+                CreateSlider = function() end,
+                CreateLabel = function() return { Set = function() end } end,
+                CreateDropdown = function() end
+            }
+        end
+    }
+end
+
+-- Aba Main
+local mainTab = win:CreateTab("Main")
+mainTab:CreateSection("Control")
+mainTab:CreateButton({ Name = "Start Farming", Callback = start })
+mainTab:CreateButton({ Name = "Stop Farming", Callback = stop })
+
+mainTab:CreateSection("Status")
+local statusLabel = mainTab:CreateLabel("Status: Stopped")
+local bossStatus = mainTab:CreateLabel("Bosses: OFF")
+local enemyStatus = mainTab:CreateLabel("Event Enemies: OFF")
+local foodStatus = mainTab:CreateLabel("Food: OFF")
+local eggStatus = mainTab:CreateLabel("Eggs: OFF")
+local nestStatus = mainTab:CreateLabel("Nests: OFF")
+local sacrificeStatus = mainTab:CreateLabel("Sacrifice: OFF")
+local miscStatus = mainTab:CreateLabel("Misc: OFF")
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if active then
+            statusLabel:Set("Status: Active")
+            bossStatus:Set("Bosses: " .. (config.farmBosses and "ON" or "OFF"))
+            local enemyOn = config.farmAllEnemies or config.farmSummer or config.farmWinter
+            enemyStatus:Set("Event Enemies: " .. (enemyOn and "ON" or "OFF"))
+            foodStatus:Set("Food: " .. (config.farmFood and "ON" or "OFF"))
+            eggStatus:Set("Eggs: " .. ((config.autoPlant or config.autoHatch) and "ON" or "OFF"))
+            nestStatus:Set("Nests: " .. (config.autoNests and "ON" or "OFF"))
+            local sacOn = config.sacrificeLoopQueen or config.sacrificeLoopKing or config.sacrificeLoopFrozen or config.sacrificeLoopWalrus
+            sacrificeStatus:Set("Sacrifice: " .. (sacOn and "ON" or "OFF"))
+            local miscOn = config.doubleJump
+            miscStatus:Set("Misc: " .. (miscOn and "ON" or "OFF"))
+        else
+            statusLabel:Set("Status: Stopped")
+            bossStatus:Set("Bosses: OFF")
+            enemyStatus:Set("Event Enemies: OFF")
+            foodStatus:Set("Food: OFF")
+            eggStatus:Set("Eggs: OFF")
+            nestStatus:Set("Nests: OFF")
+            sacrificeStatus:Set("Sacrifice: OFF")
+            miscStatus:Set("Misc: OFF")
+        end
+    end
+end)
+
+mainTab:CreateSection("Credits")
+mainTab:CreateLabel("developed by Maveryk1t")
+mainTab:CreateLabel("the best script for Pet Swarm Simulator")
+mainTab:CreateLabel("yt: Maveryk1t")
+mainTab:CreateLabel("discord: knzd1")
+
+-- Aba Farming
+local farmTab = win:CreateTab("Farming")
+farmTab:CreateSection("Event Enemies")
+farmTab:CreateToggle({
+    Name = "Enable All (Summer + Winter)",
+    CurrentValue = config.farmAllEnemies,
+    Callback = function(v)
+        config.farmAllEnemies = v
+        if v then
+            config.farmSummer = false
+            config.farmWinter = false
+        end
+    end
+})
+farmTab:CreateToggle({ Name = "Summer Only", CurrentValue = config.farmSummer, Callback = function(v) config.farmSummer = v; if v then config.farmAllEnemies = false end end })
+farmTab:CreateToggle({ Name = "Winter Only", CurrentValue = config.farmWinter, Callback = function(v) config.farmWinter = v; if v then config.farmAllEnemies = false end end })
+farmTab:CreateSlider({ Name = "Speed (s)", Range = {0.001, 1}, Increment = 0.001, Suffix = "s", CurrentValue = config.farmEnemiesSpeed, Callback = function(v) config.farmEnemiesSpeed = v end })
+
+farmTab:CreateSection("Food")
+farmTab:CreateToggle({ Name = "Farm Food", CurrentValue = config.farmFood, Callback = function(v) config.farmFood = v end })
+farmTab:CreateSlider({ Name = "Speed (s)", Range = {0.001, 1}, Increment = 0.001, Suffix = "s", CurrentValue = config.foodSpeed, Callback = function(v) config.foodSpeed = v end })
+
+-- Aba Bosses
+local bossTab = win:CreateTab("Bosses")
+bossTab:CreateSection("Boss Control")
+bossTab:CreateToggle({ Name = "Enable Boss Farming", CurrentValue = config.farmBosses, Callback = function(v) config.farmBosses = v end })
+bossTab:CreateToggle({ Name = "Enable All Bosses", CurrentValue = true, Callback = function(v)
+    for _, name in ipairs(bossList) do bossEnabled[name] = v end
+end })
+bossTab:CreateSlider({ Name = "Attack Speed (s)", Range = {0.01, 0.3}, Increment = 0.01, Suffix = "s", CurrentValue = config.bossAttackSpeed, Callback = function(v) config.bossAttackSpeed = v end })
+bossTab:CreateLabel("Boss scan every 15 seconds")
+
+bossTab:CreateSection("Boss List")
+for _, name in ipairs(bossList) do
+    bossTab:CreateToggle({
+        Name = name,
+        CurrentValue = bossEnabled[name],
+        Callback = function(v) bossEnabled[name] = v end
+    })
+end
+
+-- Aba Eggs
+local eggTab = win:CreateTab("Eggs")
+eggTab:CreateSection("Eggs Farm - Ultra Fast")
+eggTab:CreateLabel("Fixed configuration for maximum speed:")
+
+eggTab:CreateSection("PLANT")
+eggTab:CreateToggle({ Name = "Enable Auto Plant", CurrentValue = config.autoPlant, Callback = function(v) config.autoPlant = v end })
+eggTab:CreateLabel("• 9 eggs per zone every cycle")
+eggTab:CreateLabel("• Maximum speed")
+
+eggTab:CreateSection("HATCH")
+eggTab:CreateToggle({ Name = "Enable Auto Hatch", CurrentValue = config.autoHatch, Callback = function(v) config.autoHatch = v end })
+eggTab:CreateLabel("• 1 hatch every cycle")
+eggTab:CreateLabel("• Maximum speed")
+
+eggTab:CreateSection("NESTS")
+eggTab:CreateToggle({ Name = "Enable Auto Nests", CurrentValue = config.autoNests, Callback = function(v) config.autoNests = v end })
+eggTab:CreateLabel("• Feeds all nests every cycle")
+eggTab:CreateLabel("• Maximum speed")
+
+eggTab:CreateSection("Select Eggs to Plant")
+for _, egg in ipairs(eggData) do
+    eggTab:CreateToggle({
+        Name = egg.name,
+        CurrentValue = false,
+        Callback = function(val)
+            if val then
+                if not table.find(eggsSelected, egg.zone) then
+                    table.insert(eggsSelected, egg.zone)
+                end
+            else
+                local idx = table.find(eggsSelected, egg.zone)
+                if idx then table.remove(eggsSelected, idx) end
+            end
+        end
+    })
+end
+
+eggTab:CreateButton({
+    Name = "Remove Hatch Animation",
+    Callback = function()
+        local ev = ReplicatedStorage and ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Events")
+        if ev and ev:FindFirstChild("HatchAnimationEvent") then
+            ev.HatchAnimationEvent:Destroy()
+        end
+    end
+})
+
+-- Aba Sacrifices
+local sacrificeTab = win:CreateTab("Sacrifices")
+sacrificeTab:CreateSection("Mythical")
+sacrificeTab:CreateToggle({ Name = "Queen Bee (Mythical) - Loop", CurrentValue = config.sacrificeLoopQueen, Callback = function(v) config.sacrificeLoopQueen = v end })
+sacrificeTab:CreateButton({ Name = "Sacrifice Queen Bee (Once)", Callback = function() safeSacrifice("Queen Bee") end })
+sacrificeTab:CreateToggle({ Name = "Frozen Werewolf (Mythical) - Loop", CurrentValue = config.sacrificeLoopFrozen, Callback = function(v) config.sacrificeLoopFrozen = v end })
+sacrificeTab:CreateButton({ Name = "Sacrifice Frozen Werewolf (Once)", Callback = function() safeSacrifice("Frozen Werewolf") end })
+
+sacrificeTab:CreateSection("Legendary")
+sacrificeTab:CreateToggle({ Name = "King Bee (Legendary) - Loop", CurrentValue = config.sacrificeLoopKing, Callback = function(v) config.sacrificeLoopKing = v end })
+sacrificeTab:CreateButton({ Name = "Sacrifice King Bee (Once)", Callback = function() safeSacrifice("King Bee") end })
+sacrificeTab:CreateToggle({ Name = "Walrus (Legendary) - Loop", CurrentValue = config.sacrificeLoopWalrus, Callback = function(v) config.sacrificeLoopWalrus = v end })
+sacrificeTab:CreateButton({ Name = "Sacrifice Walrus (Once)", Callback = function() safeSacrifice("Walrus") end })
+
+-- Aba Misc
+local miscTab = win:CreateTab("Misc")
+miscTab:CreateSection("Movement")
+
+miscTab:CreateToggle({ Name = "Infinite Double Jump", CurrentValue = config.doubleJump, Callback = function(v)
+    config.doubleJump = v
+    if v then
+        local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+            jumpCount = 0
+            if not jumpConnection then
+                jumpConnection = humanoid.Jumping:Connect(function()
+                    jumpCount = jumpCount + 1
+                    if jumpCount >= 2 then
+                        humanoid.Jump = true
+                        jumpCount = 0
+                    end
+                end)
+            end
+        end
+    elseif jumpConnection then
+        jumpConnection:Disconnect()
+        jumpConnection = nil
+        jumpCount = 0
+    end
+end })
+
+miscTab:CreateSlider({ Name = "Walk Speed", Range = {16, 100}, Increment = 1, Suffix = "", CurrentValue = config.wallspeed, Callback = function(v)
+    config.wallspeed = v
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.WalkSpeed = v
+    end
+end })
+
+miscTab:CreateSection("Hotkey")
+miscTab:CreateLabel("Press H to hide/show GUI")
+
+local guiVisible = true
+UserInputService.InputBegan:Connect(function(input, gp)
+    if not gp and input.KeyCode == Enum.KeyCode.H then
+        guiVisible = not guiVisible
+        for _, v in pairs(win:GetChildren()) do
+            if v:IsA("ScreenGui") then
+                v.Enabled = guiVisible
+            end
+        end
+    end
+end)
+
+-- Notificação de sucesso
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "Maveryk Hub",
+    Text = "Script loaded successfully!",
+    Duration = 3
+})
