@@ -1,16 +1,13 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
-
 local Remotes = ReplicatedStorage and ReplicatedStorage:FindFirstChild("Remotes")
 local Functions = Remotes and Remotes:FindFirstChild("Functions")
 local Events = Remotes and Remotes:FindFirstChild("Events")
-
 local CombatRemote = Functions and Functions:FindFirstChild("CombatRF")
 local CollectionRemote = Functions and Functions:FindFirstChild("CollectionRF")
 local HatchRemote = Events and Events:FindFirstChild("HatchEggEvent")
@@ -18,49 +15,41 @@ local PlantRemote = Events and Events:FindFirstChild("PlantEggEvent")
 local FeedRemote = Events and Events:FindFirstChild("FeedEggEvent")
 local SacrificeRemote = Functions and Functions:FindFirstChild("SacrificeFunction")
 local ZonesRF = Functions and Functions:FindFirstChild("ZonesRF")
-
 local function safeCombat(...)
     if CombatRemote then
         pcall(CombatRemote.InvokeServer, CombatRemote, ...)
     end
 end
-
 local function safeCollect(...)
     if CollectionRemote then
         pcall(CollectionRemote.InvokeServer, CollectionRemote, ...)
     end
 end
-
 local function safeHatch()
     if HatchRemote then
         pcall(HatchRemote.FireServer, HatchRemote)
     end
 end
-
 local function safePlant(zone)
     if PlantRemote then
         pcall(PlantRemote.FireServer, PlantRemote, zone)
     end
 end
-
 local function safeFeed(nest)
     if FeedRemote then
         pcall(FeedRemote.FireServer, FeedRemote, nest)
     end
 end
-
 local function safeSacrifice(pet)
     if SacrificeRemote then
         pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", pet)
     end
 end
-
 local function requestZoneMap(zone)
     if ZonesRF then
         pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", zone)
     end
 end
-
 local active = false
 local eggsSelected = {}
 local bossEnabled = {}
@@ -73,13 +62,11 @@ local petCacheValid = false
 local nestsCache = nil
 local lastNestCacheUpdate = 0
 local startDebounce = false
-
 local performance = {
     lastFrameTime = os.clock(),
     fps = 60,
     mode = "normal"
 }
-
 local bossZoneMap = {
     Naga = "Zone2B1",
     ["Lava Monster"] = "Zone5B1",
@@ -91,7 +78,6 @@ local bossZoneMap = {
     ["The Ice Serpent"] = "WinterEventZoneB1",
     ["Great Sphinx"] = "ElementEventZoneB1",
 }
-
 local enemyList = {
     { name = "Summer", zone = "SummerEventZone", attackAll = true },
     { name = "Winter", zone = "WinterEventZone", attackAll = true },
@@ -101,17 +87,14 @@ local enemyList = {
     { name = "Terror Tree", zone = "Zone10", enemy = "Terror Tree", needsRequest = true },
     { name = "Draco's Guard", zone = "Zone12", enemy = "Draco's Guard", needsRequest = true },
 }
-
 local enemyEnabled = {}
 for i, enemy in ipairs(enemyList) do
     enemyEnabled[i] = false
 end
-
 local foodZones = {
     { name = "Crystal Food (Zone12.1)", zone = "Zone12.1", enabled = false },
     { name = "Draco Food (Zone12)", zone = "Zone12", enabled = false },
 }
-
 local config = {
     farmBosses = false,
     bossSpeed = 0.03,
@@ -132,14 +115,12 @@ local config = {
     doubleJump = false,
     wallspeed = 16,
 }
-
 local bossList = {
     "Naga", "Lava Monster", "Tiki Monster",
     "The Frozen Ancient", "The Big 100M", "The Ethereal Everia",
     "Hornet Boss", "The Ice Serpent", "Great Sphinx"
 }
 for _, name in ipairs(bossList) do bossEnabled[name] = true end
-
 local zoneList = {
     "SummerEvent1", "WinterEvent1", "EleEgg1", "6", "4", "15", "10", "27",
     "30", "11", "34", "12.1", "1", "3", "7", "8", "9", "12", "13", "14",
@@ -157,7 +138,6 @@ for _, z in ipairs(zoneList) do
         zoneCache[z] = result
     end
 end
-
 local eggData = {
     { name = "Summer Egg", zone = "SummerEvent1" },
     { name = "Winter Egg", zone = "WinterEvent1" },
@@ -188,7 +168,6 @@ local eggData = {
 local function getZone(name)
     return zoneCache[name]
 end
-
 local function getPets()
     if not petCacheValid then
         if LocalPlayer.Character then
@@ -201,13 +180,11 @@ local function getPets()
     end
     return petCache
 end
-
 if LocalPlayer.CharacterAdded then
     LocalPlayer.CharacterAdded:Connect(function()
         petCacheValid = false
     end)
 end
-
 if LocalPlayer.Character then
     pcall(function()
         return LocalPlayer.Character.ChildAdded:Connect(function(child)
@@ -217,7 +194,6 @@ if LocalPlayer.Character then
         end)
     end)
 end
-
 local function getNests()
     local now = os.clock()
     if now - lastNestCacheUpdate > 10 or not nestsCache or not nestsCache.Parent then
@@ -226,7 +202,6 @@ local function getNests()
     end
     return nestsCache
 end
-
 local function attackWithMultiplePets(enemy)
     local pets = getPets()
     if #pets == 0 then return end
@@ -234,7 +209,6 @@ local function attackWithMultiplePets(enemy)
         safeCombat("AttackEnemy", enemy, pets[i])
     end
 end
-
 local function attackEnemy(zoneName, enemyName, needsRequest)
     if needsRequest then
         requestZoneMap(zoneName)
@@ -248,7 +222,6 @@ local function attackEnemy(zoneName, enemyName, needsRequest)
         end
     end
 end
-
 local function attackAllEnemies(zoneName, needsRequest)
     if needsRequest then
         requestZoneMap(zoneName)
@@ -262,8 +235,6 @@ local function attackAllEnemies(zoneName, needsRequest)
         end
     end
 end
-
--- EGGS 15x (TUDO 15 THREADS)
 local plantThreads = {}
 local function plantWorker(id)
     while active and plantThreads[id] and config.autoPlant do
@@ -277,7 +248,6 @@ local function plantWorker(id)
         task.wait(0.001)
     end
 end
-
 local hatchThreads = {}
 local function hatchWorker(id)
     while active and hatchThreads[id] and config.autoHatch do
@@ -285,7 +255,6 @@ local function hatchWorker(id)
         task.wait(0.001)
     end
 end
-
 local nestsThreads = {}
 local function nestsWorker(id)
     while active and nestsThreads[id] and config.autoNests do
@@ -298,8 +267,6 @@ local function nestsWorker(id)
         task.wait(0.001)
     end
 end
-
--- Bosses
 local bossThreads = {}
 local function bossWorker(id)
     while active and bossThreads[id] and config.farmBosses do
@@ -318,8 +285,6 @@ local function bossWorker(id)
         task.wait(config.bossSpeed)
     end
 end
-
--- Enemies
 local enemyThreads = {}
 local function enemyWorker(id)
     while active and enemyThreads[id] and config.farmEnemies do
@@ -335,8 +300,6 @@ local function enemyWorker(id)
         task.wait(config.enemiesSpeed)
     end
 end
-
--- Food
 local foodThreads = {}
 local function foodWorker(id)
     while active and foodThreads[id] and config.farmFood do
@@ -357,15 +320,12 @@ local function foodWorker(id)
         task.wait(config.foodSpeed)
     end
 end
-
--- Sacrifice (LOOP CONTÍNUO CORRIGIDO - FUNCIONA COM 1 CLIQUE)
 local sacrificeActive = {
     queen = false,
     king = false,
     frozen = false,
     walrus = false
 }
-
 local sacrificeThread = nil
 local function sacrificeWorker()
     while active do
@@ -381,10 +341,9 @@ local function sacrificeWorker()
         if sacrificeActive.walrus then
             safeSacrifice("Walrus")
         end
-        task.wait(0.5) -- 0.5 segundos entre cada ciclo (rápido mas sem flood)
+        task.wait(0.5)
     end
 end
-
 local function updateSacrificeThread()
     if sacrificeThread then
         task.cancel(sacrificeThread)
@@ -394,7 +353,6 @@ local function updateSacrificeThread()
         sacrificeThread = task.spawn(sacrificeWorker)
     end
 end
-
 local function scanBosses()
     if not config.farmBosses then return end
     local newActive = {}
@@ -411,7 +369,6 @@ local function scanBosses()
     end
     activeBosses = newActive
 end
-
 local function bossScanLoop()
     while active do
         scanBosses()
@@ -423,14 +380,8 @@ local function start()
     if active then return end
     active = true
     petCacheValid = false
-    
-    -- Scan inicial de bosses
     scanBosses()
-    
-    -- Threads principais
     task.spawn(bossScanLoop)
-    
-    -- EGGS 15x
     for i = 1, 15 do
         plantThreads[i] = true
         task.spawn(function() plantWorker(i) end)
@@ -439,29 +390,20 @@ local function start()
         nestsThreads[i] = true
         task.spawn(function() nestsWorker(i) end)
     end
-    
-    -- Bosses
     for i = 1, config.bossThreads do
         bossThreads[i] = true
         task.spawn(function() bossWorker(i) end)
     end
-    
-    -- Enemies
     for i = 1, config.enemyThreads do
         enemyThreads[i] = true
         task.spawn(function() enemyWorker(i) end)
     end
-    
-    -- Food
     for i = 1, config.foodThreads do
         foodThreads[i] = true
         task.spawn(function() foodWorker(i) end)
     end
-    
-    -- Sacrifice
     updateSacrificeThread()
 end
-
 local function stop()
     active = false
     plantThreads = {}
@@ -477,8 +419,6 @@ local function stop()
     activeBosses = {}
     petCacheValid = false
 end
-
--- Interface
 local win = Rayfield:CreateWindow({
     Name = "Maveryk Hub - 15x Eggs",
     LoadingTitle = "Loading...",
@@ -486,12 +426,10 @@ local win = Rayfield:CreateWindow({
     ConfigurationSaving = { Enabled = true, FolderName = "MaverykHub", FileName = "Config" },
     Theme = "Dark"
 })
-
 local mainTab = win:CreateTab("Main")
 mainTab:CreateSection("Control")
 mainTab:CreateButton({ Name = "Start Farming", Callback = start })
 mainTab:CreateButton({ Name = "Stop Farming", Callback = stop })
-
 mainTab:CreateSection("Status")
 local statusLabel = mainTab:CreateLabel("Status: Stopped")
 local bossStatus = mainTab:CreateLabel("Bosses: OFF")
@@ -501,32 +439,26 @@ local eggStatus = mainTab:CreateLabel("Eggs: OFF")
 local nestStatus = mainTab:CreateLabel("Nests: OFF")
 local sacrificeStatus = mainTab:CreateLabel("Sacrifice: OFF")
 local miscStatus = mainTab:CreateLabel("Misc: OFF")
-
 task.spawn(function()
     while true do
         task.wait(0.5)
         if active then
             statusLabel:Set("Status: Active")
             bossStatus:Set("Bosses: " .. (config.farmBosses and "ON" or "OFF"))
-            
             local anyEnemy = false
             for _, enabled in pairs(enemyEnabled) do
                 if enabled then anyEnemy = true break end
             end
             enemyStatus:Set("Enemies: " .. (anyEnemy and "ON" or "OFF"))
-            
             local anyFood = false
             for _, foodZone in ipairs(foodZones) do
                 if foodZone.enabled then anyFood = true break end
             end
             foodStatus:Set("Food: " .. (anyFood and "ON" or "OFF"))
-            
             eggStatus:Set("Eggs: " .. ((config.autoPlant or config.autoHatch) and "ON" or "OFF"))
             nestStatus:Set("Nests: " .. (config.autoNests and "ON" or "OFF"))
-            
             local sacOn = sacrificeActive.queen or sacrificeActive.king or sacrificeActive.frozen or sacrificeActive.walrus
             sacrificeStatus:Set("Sacrifice: " .. (sacOn and "ON" or "OFF"))
-            
             miscStatus:Set("Misc: " .. (config.doubleJump and "ON" or "OFF"))
         else
             statusLabel:Set("Status: Stopped")
@@ -540,13 +472,10 @@ task.spawn(function()
         end
     end
 end)
-
 mainTab:CreateSection("Credits")
 mainTab:CreateLabel("developed by Maveryk1t")
 mainTab:CreateLabel("yt: Maveryk1t")
 mainTab:CreateLabel("discord: knzd1")
-
--- Enemies Tab
 local enemiesTab = win:CreateTab("Enemies")
 enemiesTab:CreateSection("Enemy Farming")
 enemiesTab:CreateToggle({ Name = "Enable Enemies", CurrentValue = config.farmEnemies, Callback = function(v) config.farmEnemies = v end })
@@ -555,53 +484,41 @@ enemiesTab:CreateToggle({ Name = "Enable All Enemies", CurrentValue = false, Cal
         enemyEnabled[i] = v
     end
 end })
-
 enemiesTab:CreateSection("Event Enemies")
 enemiesTab:CreateToggle({ Name = "Summer (All)", CurrentValue = enemyEnabled[1], Callback = function(v) enemyEnabled[1] = v end })
 enemiesTab:CreateToggle({ Name = "Winter (All)", CurrentValue = enemyEnabled[2], Callback = function(v) enemyEnabled[2] = v end })
 enemiesTab:CreateToggle({ Name = "Sphinx (Evil Eagle)", CurrentValue = enemyEnabled[3], Callback = function(v) enemyEnabled[3] = v end })
-
 enemiesTab:CreateSection("Desert")
 enemiesTab:CreateToggle({ Name = "Cursed Mummy", CurrentValue = enemyEnabled[4], Callback = function(v) enemyEnabled[4] = v end })
-
 enemiesTab:CreateSection("Sky")
 enemiesTab:CreateToggle({ Name = "Crazy Unicorn", CurrentValue = enemyEnabled[5], Callback = function(v) enemyEnabled[5] = v end })
-
 enemiesTab:CreateSection("Tiki")
 enemiesTab:CreateToggle({ Name = "Terror Tree", CurrentValue = enemyEnabled[6], Callback = function(v) enemyEnabled[6] = v end })
-
 enemiesTab:CreateSection("Draco")
 enemiesTab:CreateToggle({ Name = "Draco's Guard", CurrentValue = enemyEnabled[7], Callback = function(v) enemyEnabled[7] = v end })
-
 enemiesTab:CreateSection("Settings")
 enemiesTab:CreateSlider({ Name = "Enemy Threads", Range = {1, 10}, Increment = 1, CurrentValue = config.enemyThreads, Callback = function(v) config.enemyThreads = v end })
 enemiesTab:CreateSlider({ Name = "Speed (s)", Range = {0.001, 1}, Increment = 0.001, Suffix = "s", CurrentValue = config.enemiesSpeed, Callback = function(v) config.enemiesSpeed = v end })
 enemiesTab:CreateLabel("5 pets per enemy attack")
-
--- Food Tab
 local foodTab = win:CreateTab("Food")
 foodTab:CreateSection("Food Zones")
 foodTab:CreateToggle({ Name = "Enable Food", CurrentValue = config.farmFood, Callback = function(v) config.farmFood = v end })
 foodTab:CreateLabel("Select which zones to farm:")
-
 foodTab:CreateToggle({ 
     Name = foodZones[1].name, 
     CurrentValue = foodZones[1].enabled, 
     Callback = function(v) foodZones[1].enabled = v end 
 })
-
 foodTab:CreateToggle({ 
     Name = foodZones[2].name, 
     CurrentValue = foodZones[2].enabled, 
     Callback = function(v) foodZones[2].enabled = v end 
 })
-
 foodTab:CreateSection("Settings")
 foodTab:CreateLabel("• 5 pets per food item")
 foodTab:CreateSlider({ Name = "Food Threads", Range = {1, 10}, Increment = 1, CurrentValue = config.foodThreads, Callback = function(v) config.foodThreads = v end })
 foodTab:CreateSlider({ Name = "Speed (s)", Range = {0.001, 1}, Increment = 0.001, Suffix = "s", CurrentValue = config.foodSpeed, Callback = function(v) config.foodSpeed = v end })
 
--- Bosses Tab
 local bossTab = win:CreateTab("Bosses")
 bossTab:CreateSection("Boss Control")
 bossTab:CreateToggle({ Name = "Enable Boss Farming", CurrentValue = config.farmBosses, Callback = function(v) config.farmBosses = v end })
@@ -611,7 +528,6 @@ end })
 bossTab:CreateSlider({ Name = "Boss Threads", Range = {1, 5}, Increment = 1, CurrentValue = config.bossThreads, Callback = function(v) config.bossThreads = v end })
 bossTab:CreateSlider({ Name = "Attack Speed (s)", Range = {0.01, 0.3}, Increment = 0.01, Suffix = "s", CurrentValue = config.bossSpeed, Callback = function(v) config.bossSpeed = v end })
 bossTab:CreateLabel("Boss scan every 15 seconds")
-
 bossTab:CreateSection("Boss List")
 for _, name in ipairs(bossList) do
     bossTab:CreateToggle({
@@ -620,27 +536,21 @@ for _, name in ipairs(bossList) do
         Callback = function(v) bossEnabled[name] = v end
     })
 end
-
--- Eggs Tab
 local eggTab = win:CreateTab("Eggs")
 eggTab:CreateSection("EGGS 15x")
 eggTab:CreateLabel("⚡ 15 THREADS FOR EVERYTHING ⚡")
-
 eggTab:CreateSection("PLANT")
 eggTab:CreateToggle({ Name = "Enable Auto Plant", CurrentValue = config.autoPlant, Callback = function(v) config.autoPlant = v end })
 eggTab:CreateLabel("• 9 eggs per zone")
 eggTab:CreateLabel("• 15 threads")
-
 eggTab:CreateSection("HATCH")
 eggTab:CreateToggle({ Name = "Enable Auto Hatch", CurrentValue = config.autoHatch, Callback = function(v) config.autoHatch = v end })
 eggTab:CreateLabel("• 1 hatch per cycle")
 eggTab:CreateLabel("• 15 threads")
-
 eggTab:CreateSection("NESTS")
 eggTab:CreateToggle({ Name = "Enable Auto Nests", CurrentValue = config.autoNests, Callback = function(v) config.autoNests = v end })
 eggTab:CreateLabel("• All nests per cycle")
 eggTab:CreateLabel("• 15 threads")
-
 eggTab:CreateSection("Select Eggs to Plant")
 for _, egg in ipairs(eggData) do
     eggTab:CreateToggle({
@@ -658,7 +568,6 @@ for _, egg in ipairs(eggData) do
         end
     })
 end
-
 eggTab:CreateButton({
     Name = "Remove Hatch Animation",
     Callback = function()
@@ -668,12 +577,9 @@ eggTab:CreateButton({
         end
     end
 })
-
--- Sacrifice Tab
 local sacrificeTab = win:CreateTab("Sacrifice")
 sacrificeTab:CreateSection("SACRIFICE LOOP")
 sacrificeTab:CreateLabel("⚡ Ative uma vez e funciona continuamente ⚡")
-
 sacrificeTab:CreateSection("Mythical")
 sacrificeTab:CreateToggle({ 
     Name = "Queen Bee (Mythical) - Loop", 
@@ -694,7 +600,6 @@ sacrificeTab:CreateButton({
         })
     end 
 })
-
 sacrificeTab:CreateToggle({ 
     Name = "Frozen Werewolf (Mythical) - Loop", 
     CurrentValue = sacrificeActive.frozen, 
@@ -714,7 +619,6 @@ sacrificeTab:CreateButton({
         })
     end 
 })
-
 sacrificeTab:CreateSection("Legendary")
 sacrificeTab:CreateToggle({ 
     Name = "King Bee (Legendary) - Loop", 
@@ -735,7 +639,6 @@ sacrificeTab:CreateButton({
         })
     end 
 })
-
 sacrificeTab:CreateToggle({ 
     Name = "Walrus (Legendary) - Loop", 
     CurrentValue = sacrificeActive.walrus, 
@@ -756,10 +659,8 @@ sacrificeTab:CreateButton({
     end 
 })
 
--- Misc Tab
 local miscTab = win:CreateTab("Misc")
 miscTab:CreateSection("Movement")
-
 miscTab:CreateToggle({ Name = "Infinite Double Jump", CurrentValue = config.doubleJump, Callback = function(v)
     config.doubleJump = v
     if v then
@@ -783,7 +684,6 @@ miscTab:CreateToggle({ Name = "Infinite Double Jump", CurrentValue = config.doub
         jumpCount = 0
     end
 end })
-
 miscTab:CreateSlider({ Name = "Walk Speed", Range = {16, 100}, Increment = 1, Suffix = "", CurrentValue = config.wallspeed, Callback = function(v)
     config.wallspeed = v
     local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -791,10 +691,8 @@ miscTab:CreateSlider({ Name = "Walk Speed", Range = {16, 100}, Increment = 1, Su
         humanoid.WalkSpeed = v
     end
 end })
-
 miscTab:CreateSection("Hotkey")
 miscTab:CreateLabel("Press H to hide/show GUI")
-
 local guiVisible = true
 UserInputService.InputBegan:Connect(function(input, gp)
     if not gp and input.KeyCode == Enum.KeyCode.H then
@@ -806,7 +704,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
         end
     end
 end)
-
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Maveryk Hub",
     Text = "15x Eggs | Sacrifice Loop Fixed",
