@@ -327,7 +327,20 @@ local sacrificeActive = {
     walrus = false
 }
 local sacrificeThread = nil
+local function loadSummerZone()
+    local success, result = pcall(function()
+        return requestZoneMap("SummerEventZone")
+    end)
+    task.wait(1)
+    local zone = getZone("SummerEventZone")
+    if zone and zone:FindFirstChild("Enemies") then
+        for _, enemy in ipairs(zone.Enemies:GetChildren()) do
+            safeCombat("AttackEnemy", enemy, getPets()[1])
+        end
+    end
+end
 local function sacrificeWorker()
+    loadSummerZone()
     while active do
         if sacrificeActive.queen then
             safeSacrifice("Queen Bee")
