@@ -328,33 +328,34 @@ local sacrificeActive = {
 }
 local sacrificeThread = nil
 local function loadSummerZone()
-    local success, result = pcall(function()
-        return requestZoneMap("SummerEventZone")
+    pcall(function()
+        requestZoneMap("SummerEventZone")
     end)
-    task.wait(1)
-    local zone = getZone("SummerEventZone")
-    if zone and zone:FindFirstChild("Enemies") then
-        for _, enemy in ipairs(zone.Enemies:GetChildren()) do
-            safeCombat("AttackEnemy", enemy, getPets()[1])
-        end
-    end
 end
 local function sacrificeWorker()
     loadSummerZone()
     while active do
         if sacrificeActive.queen then
-            safeSacrifice("Queen Bee")
+            pcall(function()
+                SacrificeRemote:InvokeServer("SacrificeWell", "Queen Bee")
+            end)
         end
         if sacrificeActive.king then
-            safeSacrifice("King Bee")
+            pcall(function()
+                SacrificeRemote:InvokeServer("SacrificeWell", "King Bee")
+            end)
         end
         if sacrificeActive.frozen then
-            safeSacrifice("Frozen Werewolf")
+            pcall(function()
+                SacrificeRemote:InvokeServer("SacrificeWell", "Frozen Werewolf")
+            end)
         end
         if sacrificeActive.walrus then
-            safeSacrifice("Walrus")
+            pcall(function()
+                SacrificeRemote:InvokeServer("SacrificeWell", "Walrus")
+            end)
         end
-        task.wait(0.5)
+        task.wait(3)
     end
 end
 local function updateSacrificeThread()
@@ -435,7 +436,7 @@ end
 local win = Rayfield:CreateWindow({
     Name = "Maveryk Hub - 15x Eggs",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "15x Eggs | Sacrifice Loop",
+    LoadingSubtitle = "15x Eggs | Sacrifice 3s",
     ConfigurationSaving = { Enabled = true, FolderName = "MaverykHub", FileName = "Config" },
     Theme = "Dark"
 })
@@ -591,8 +592,8 @@ eggTab:CreateButton({
     end
 })
 local sacrificeTab = win:CreateTab("Sacrifice")
-sacrificeTab:CreateSection("SACRIFICE LOOP")
-sacrificeTab:CreateLabel("⚡ Ative uma vez e funciona continuamente ⚡")
+sacrificeTab:CreateSection("SACRIFICE LOOP - 3 SECONDS")
+sacrificeTab:CreateLabel("⚡ Ative uma vez e funciona a cada 3s ⚡")
 sacrificeTab:CreateSection("Mythical")
 sacrificeTab:CreateToggle({ 
     Name = "Queen Bee (Mythical) - Loop", 
@@ -605,7 +606,9 @@ sacrificeTab:CreateToggle({
 sacrificeTab:CreateButton({ 
     Name = "Sacrifice Queen Bee (Once)", 
     Callback = function() 
-        safeSacrifice("Queen Bee")
+        pcall(function()
+            SacrificeRemote:InvokeServer("SacrificeWell", "Queen Bee")
+        end)
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Sacrifice",
             Text = "Queen Bee sacrificed!",
@@ -624,7 +627,9 @@ sacrificeTab:CreateToggle({
 sacrificeTab:CreateButton({ 
     Name = "Sacrifice Frozen Werewolf (Once)", 
     Callback = function() 
-        safeSacrifice("Frozen Werewolf")
+        pcall(function()
+            SacrificeRemote:InvokeServer("SacrificeWell", "Frozen Werewolf")
+        end)
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Sacrifice",
             Text = "Frozen Werewolf sacrificed!",
@@ -644,7 +649,9 @@ sacrificeTab:CreateToggle({
 sacrificeTab:CreateButton({ 
     Name = "Sacrifice King Bee (Once)", 
     Callback = function() 
-        safeSacrifice("King Bee")
+        pcall(function()
+            SacrificeRemote:InvokeServer("SacrificeWell", "King Bee")
+        end)
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Sacrifice",
             Text = "King Bee sacrificed!",
@@ -663,7 +670,9 @@ sacrificeTab:CreateToggle({
 sacrificeTab:CreateButton({ 
     Name = "Sacrifice Walrus (Once)", 
     Callback = function() 
-        safeSacrifice("Walrus")
+        pcall(function()
+            SacrificeRemote:InvokeServer("SacrificeWell", "Walrus")
+        end)
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Sacrifice",
             Text = "Walrus sacrificed!",
@@ -719,6 +728,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Maveryk Hub",
-    Text = "15x Eggs | Sacrifice Loop Fixed",
+    Text = "15x Eggs | Sacrifice 3s",
     Duration = 3
 })
