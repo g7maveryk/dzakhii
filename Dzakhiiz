@@ -397,7 +397,7 @@ local function start()
     stopAllThreads()
     scanBosses()
     task.spawn(bossScanLoop)
-    for i = 1, 22 do
+    for i = 1, 35 do
         plantThreads[i] = true
         task.spawn(function() plantWorker(i) end)
         hatchThreads[i] = true
@@ -426,9 +426,9 @@ local function stop()
     stopAllThreads()
 end
 local win = Rayfield:CreateWindow({
-    Name = "Maveryk Hub - 22x Eggs",
+    Name = "Maveryk Hub - 35x Eggs EXTREME",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "Sacrifice 5s | Max 10",
+    LoadingSubtitle = "35x Eggs | Sacrifice Max 10",
     ConfigurationSaving = { Enabled = true, FolderName = "MaverykHub", FileName = "Config" },
     Theme = "Dark"
 })
@@ -546,20 +546,21 @@ for _, name in ipairs(bossList) do
     })
 end
 local eggTab = win:CreateTab("Eggs")
-eggTab:CreateSection("EGGS 22x")
-eggTab:CreateLabel("⚡ 22 THREADS FOR EVERYTHING ⚡")
+eggTab:CreateSection("EGGS 35x EXTREME")
+eggTab:CreateLabel("⚡ 35 THREADS FOR EVERYTHING ⚡")
+eggTab:CreateLabel("🔥 MODO EXTREMO - PODE TRAVAR 🔥")
 eggTab:CreateSection("PLANT")
 eggTab:CreateToggle({ Name = "Enable Auto Plant", CurrentValue = config.autoPlant, Callback = function(v) config.autoPlant = v end })
 eggTab:CreateLabel("• 9 eggs per zone")
-eggTab:CreateLabel("• 22 threads")
+eggTab:CreateLabel("• 35 threads")
 eggTab:CreateSection("HATCH")
 eggTab:CreateToggle({ Name = "Enable Auto Hatch", CurrentValue = config.autoHatch, Callback = function(v) config.autoHatch = v end })
 eggTab:CreateLabel("• 1 hatch per cycle")
-eggTab:CreateLabel("• 22 threads")
+eggTab:CreateLabel("• 35 threads")
 eggTab:CreateSection("NESTS")
 eggTab:CreateToggle({ Name = "Enable Auto Nests", CurrentValue = config.autoNests, Callback = function(v) config.autoNests = v end })
 eggTab:CreateLabel("• All nests per cycle")
-eggTab:CreateLabel("• 22 threads")
+eggTab:CreateLabel("• 35 threads")
 eggTab:CreateSection("Select Eggs to Plant")
 for _, egg in ipairs(eggData) do
     eggTab:CreateToggle({
@@ -735,6 +736,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Maveryk Hub",
-    Text = "22x Eggs | Sacrifice Max 10",
+    Text = "35x Eggs EXTREME | Sacrifice Max 10",
     Duration = 3
 })
