@@ -40,16 +40,6 @@ local function safeFeed(nest)
         pcall(FeedRemote.FireServer, FeedRemote, nest)
     end
 end
-local function safeSacrifice(pet)
-    if SacrificeRemote then
-        pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", pet)
-    end
-end
-local function requestZoneMap(zone)
-    if ZonesRF then
-        pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", zone)
-    end
-end
 local active = false
 local eggsSelected = {}
 local bossEnabled = {}
@@ -62,11 +52,6 @@ local petCacheValid = false
 local nestsCache = nil
 local lastNestCacheUpdate = 0
 local startDebounce = false
-local performance = {
-    lastFrameTime = os.clock(),
-    fps = 60,
-    mode = "normal"
-}
 local bossZoneMap = {
     Naga = "Zone2B1",
     ["Lava Monster"] = "Zone5B1",
@@ -108,10 +93,10 @@ local config = {
     autoPlant = false,
     autoHatch = false,
     autoNests = false,
-    sacrificeLoopQueen = false,
-    sacrificeLoopKing = false,
-    sacrificeLoopFrozen = false,
-    sacrificeLoopWalrus = false,
+    sacrificeQueen = false,
+    sacrificeKing = false,
+    sacrificeFrozen = false,
+    sacrificeWalrus = false,
     doubleJump = false,
     wallspeed = 16,
 }
@@ -211,7 +196,7 @@ local function attackWithMultiplePets(enemy)
 end
 local function attackEnemy(zoneName, enemyName, needsRequest)
     if needsRequest then
-        requestZoneMap(zoneName)
+        pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", zoneName)
         task.wait(0.1)
     end
     local zone = getZone(zoneName)
@@ -224,7 +209,7 @@ local function attackEnemy(zoneName, enemyName, needsRequest)
 end
 local function attackAllEnemies(zoneName, needsRequest)
     if needsRequest then
-        requestZoneMap(zoneName)
+        pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", zoneName)
         task.wait(0.1)
     end
     local zone = getZone(zoneName)
@@ -241,7 +226,7 @@ local function plantWorker(id)
         if #eggsSelected > 0 then
             for _, zone in ipairs(eggsSelected) do
                 for _ = 1, 9 do
-                    safePlant(zone)
+                    pcall(PlantRemote.FireServer, PlantRemote, zone)
                 end
             end
         end
@@ -251,7 +236,7 @@ end
 local hatchThreads = {}
 local function hatchWorker(id)
     while active and hatchThreads[id] and config.autoHatch do
-        safeHatch()
+        pcall(HatchRemote.FireServer, HatchRemote)
         task.wait(0.001)
     end
 end
@@ -261,7 +246,7 @@ local function nestsWorker(id)
         local nests = getNests()
         if nests then
             for _, nest in ipairs(nests:GetChildren()) do
-                safeFeed(nest)
+                pcall(FeedRemote.FireServer, FeedRemote, nest)
             end
         end
         task.wait(0.001)
@@ -276,7 +261,7 @@ local function bossWorker(id)
                 local idx = 1
                 for _, boss in ipairs(activeBosses) do
                     if boss and boss.Parent then
-                        safeCombat("AttackEnemy", boss, pets[idx])
+                        pcall(CombatRemote.InvokeServer, CombatRemote, "AttackEnemy", boss, pets[idx])
                         idx = idx % #pets + 1
                     end
                 end
@@ -311,7 +296,7 @@ local function foodWorker(id)
                     for _, f in ipairs(foods) do
                         local pets = getPets()
                         for i = 1, math.min(5, #pets) do
-                            safeCollect("CollectFood", f, pets[i])
+                            pcall(CollectionRemote.InvokeServer, CollectionRemote, "CollectFood", f, pets[i])
                         end
                     end
                 end
@@ -320,54 +305,24 @@ local function foodWorker(id)
         task.wait(config.foodSpeed)
     end
 end
-local sacrificeActive = {
-    queen = false,
-    king = false,
-    frozen = false,
-    walrus = false
-}
 local sacrificeThread = nil
-local function ensureSummerZone()
-    pcall(function()
-        ZonesRF:InvokeServer("RequestZoneMap", "SummerEventZone")
-    end)
-    task.wait(0.5)
-end
-local function doSacrifice(petName)
-    local success, result = pcall(function()
-        return SacrificeRemote:InvokeServer("SacrificeWell", petName)
-    end)
-    if success then
-        print("Sacrificed " .. petName)
-    else
-        warn("Failed to sacrifice " .. petName)
-    end
-end
 local function sacrificeWorker()
-    ensureSummerZone()
+    pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", "SummerEventZone")
+    task.wait(1)
     while active do
-        if sacrificeActive.queen then
-            doSacrifice("Queen Bee")
+        if config.sacrificeQueen then
+            pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "Queen Bee")
         end
-        if sacrificeActive.king then
-            doSacrifice("King Bee")
+        if config.sacrificeKing then
+            pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "King Bee")
         end
-        if sacrificeActive.frozen then
-            doSacrifice("Frozen Werewolf")
+        if config.sacrificeFrozen then
+            pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "Frozen Werewolf")
         end
-        if sacrificeActive.walrus then
-            doSacrifice("Walrus")
+        if config.sacrificeWalrus then
+            pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "Walrus")
         end
         task.wait(5)
-    end
-end
-local function updateSacrificeThread()
-    if sacrificeThread then
-        task.cancel(sacrificeThread)
-        sacrificeThread = nil
-    end
-    if active and (sacrificeActive.queen or sacrificeActive.king or sacrificeActive.frozen or sacrificeActive.walrus) then
-        sacrificeThread = task.spawn(sacrificeWorker)
     end
 end
 local function scanBosses()
@@ -393,13 +348,28 @@ local function bossScanLoop()
     end
 end
 
+local function stopAllThreads()
+    plantThreads = {}
+    hatchThreads = {}
+    nestsThreads = {}
+    bossThreads = {}
+    enemyThreads = {}
+    foodThreads = {}
+    if sacrificeThread then
+        task.cancel(sacrificeThread)
+        sacrificeThread = nil
+    end
+    activeBosses = {}
+    petCacheValid = false
+end
 local function start()
     if active then return end
     active = true
     petCacheValid = false
+    stopAllThreads()
     scanBosses()
     task.spawn(bossScanLoop)
-    for i = 1, 15 do
+    for i = 1, 22 do
         plantThreads[i] = true
         task.spawn(function() plantWorker(i) end)
         hatchThreads[i] = true
@@ -419,27 +389,18 @@ local function start()
         foodThreads[i] = true
         task.spawn(function() foodWorker(i) end)
     end
-    updateSacrificeThread()
+    if config.sacrificeQueen or config.sacrificeKing or config.sacrificeFrozen or config.sacrificeWalrus then
+        sacrificeThread = task.spawn(sacrificeWorker)
+    end
 end
 local function stop()
     active = false
-    plantThreads = {}
-    hatchThreads = {}
-    nestsThreads = {}
-    bossThreads = {}
-    enemyThreads = {}
-    foodThreads = {}
-    if sacrificeThread then
-        task.cancel(sacrificeThread)
-        sacrificeThread = nil
-    end
-    activeBosses = {}
-    petCacheValid = false
+    stopAllThreads()
 end
 local win = Rayfield:CreateWindow({
-    Name = "Maveryk Hub - 15x Eggs",
+    Name = "Maveryk Hub - 22x Eggs",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "15x Eggs | Sacrifice 5s",
+    LoadingSubtitle = "22x Eggs | Sacrifice 5s",
     ConfigurationSaving = { Enabled = true, FolderName = "MaverykHub", FileName = "Config" },
     Theme = "Dark"
 })
@@ -474,7 +435,7 @@ task.spawn(function()
             foodStatus:Set("Food: " .. (anyFood and "ON" or "OFF"))
             eggStatus:Set("Eggs: " .. ((config.autoPlant or config.autoHatch) and "ON" or "OFF"))
             nestStatus:Set("Nests: " .. (config.autoNests and "ON" or "OFF"))
-            local sacOn = sacrificeActive.queen or sacrificeActive.king or sacrificeActive.frozen or sacrificeActive.walrus
+            local sacOn = config.sacrificeQueen or config.sacrificeKing or config.sacrificeFrozen or config.sacrificeWalrus
             sacrificeStatus:Set("Sacrifice: " .. (sacOn and "ON" or "OFF"))
             miscStatus:Set("Misc: " .. (config.doubleJump and "ON" or "OFF"))
         else
@@ -554,20 +515,20 @@ for _, name in ipairs(bossList) do
     })
 end
 local eggTab = win:CreateTab("Eggs")
-eggTab:CreateSection("EGGS 15x")
-eggTab:CreateLabel("⚡ 15 THREADS FOR EVERYTHING ⚡")
+eggTab:CreateSection("EGGS 22x")
+eggTab:CreateLabel("⚡ 22 THREADS FOR EVERYTHING ⚡")
 eggTab:CreateSection("PLANT")
 eggTab:CreateToggle({ Name = "Enable Auto Plant", CurrentValue = config.autoPlant, Callback = function(v) config.autoPlant = v end })
 eggTab:CreateLabel("• 9 eggs per zone")
-eggTab:CreateLabel("• 15 threads")
+eggTab:CreateLabel("• 22 threads")
 eggTab:CreateSection("HATCH")
 eggTab:CreateToggle({ Name = "Enable Auto Hatch", CurrentValue = config.autoHatch, Callback = function(v) config.autoHatch = v end })
 eggTab:CreateLabel("• 1 hatch per cycle")
-eggTab:CreateLabel("• 15 threads")
+eggTab:CreateLabel("• 22 threads")
 eggTab:CreateSection("NESTS")
 eggTab:CreateToggle({ Name = "Enable Auto Nests", CurrentValue = config.autoNests, Callback = function(v) config.autoNests = v end })
 eggTab:CreateLabel("• All nests per cycle")
-eggTab:CreateLabel("• 15 threads")
+eggTab:CreateLabel("• 22 threads")
 eggTab:CreateSection("Select Eggs to Plant")
 for _, egg in ipairs(eggData) do
     eggTab:CreateToggle({
@@ -596,22 +557,23 @@ eggTab:CreateButton({
 })
 local sacrificeTab = win:CreateTab("Sacrifice")
 sacrificeTab:CreateSection("SACRIFICE LOOP - 5 SECONDS")
-sacrificeTab:CreateLabel("⚡ Ative uma vez e funciona a cada 5s ⚡")
+sacrificeTab:CreateLabel("⚡ Roda junto com Eggs ⚡")
 sacrificeTab:CreateSection("Mythical")
 sacrificeTab:CreateToggle({ 
     Name = "Queen Bee (Mythical) - Loop", 
-    CurrentValue = sacrificeActive.queen, 
+    CurrentValue = config.sacrificeQueen, 
     Callback = function(v) 
-        sacrificeActive.queen = v
-        updateSacrificeThread()
+        config.sacrificeQueen = v
+        if active then
+            if sacrificeThread then task.cancel(sacrificeThread) end
+            sacrificeThread = task.spawn(sacrificeWorker)
+        end
     end 
 })
 sacrificeTab:CreateButton({ 
     Name = "Sacrifice Queen Bee (Once)", 
     Callback = function() 
-        pcall(function()
-            SacrificeRemote:InvokeServer("SacrificeWell", "Queen Bee")
-        end)
+        pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "Queen Bee")
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Sacrifice",
             Text = "Queen Bee sacrificed!",
@@ -621,18 +583,19 @@ sacrificeTab:CreateButton({
 })
 sacrificeTab:CreateToggle({ 
     Name = "Frozen Werewolf (Mythical) - Loop", 
-    CurrentValue = sacrificeActive.frozen, 
+    CurrentValue = config.sacrificeFrozen, 
     Callback = function(v) 
-        sacrificeActive.frozen = v
-        updateSacrificeThread()
+        config.sacrificeFrozen = v
+        if active then
+            if sacrificeThread then task.cancel(sacrificeThread) end
+            sacrificeThread = task.spawn(sacrificeWorker)
+        end
     end 
 })
 sacrificeTab:CreateButton({ 
     Name = "Sacrifice Frozen Werewolf (Once)", 
     Callback = function() 
-        pcall(function()
-            SacrificeRemote:InvokeServer("SacrificeWell", "Frozen Werewolf")
-        end)
+        pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "Frozen Werewolf")
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Sacrifice",
             Text = "Frozen Werewolf sacrificed!",
@@ -643,18 +606,19 @@ sacrificeTab:CreateButton({
 sacrificeTab:CreateSection("Legendary")
 sacrificeTab:CreateToggle({ 
     Name = "King Bee (Legendary) - Loop", 
-    CurrentValue = sacrificeActive.king, 
+    CurrentValue = config.sacrificeKing, 
     Callback = function(v) 
-        sacrificeActive.king = v
-        updateSacrificeThread()
+        config.sacrificeKing = v
+        if active then
+            if sacrificeThread then task.cancel(sacrificeThread) end
+            sacrificeThread = task.spawn(sacrificeWorker)
+        end
     end 
 })
 sacrificeTab:CreateButton({ 
     Name = "Sacrifice King Bee (Once)", 
     Callback = function() 
-        pcall(function()
-            SacrificeRemote:InvokeServer("SacrificeWell", "King Bee")
-        end)
+        pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "King Bee")
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Sacrifice",
             Text = "King Bee sacrificed!",
@@ -664,18 +628,19 @@ sacrificeTab:CreateButton({
 })
 sacrificeTab:CreateToggle({ 
     Name = "Walrus (Legendary) - Loop", 
-    CurrentValue = sacrificeActive.walrus, 
+    CurrentValue = config.sacrificeWalrus, 
     Callback = function(v) 
-        sacrificeActive.walrus = v
-        updateSacrificeThread()
+        config.sacrificeWalrus = v
+        if active then
+            if sacrificeThread then task.cancel(sacrificeThread) end
+            sacrificeThread = task.spawn(sacrificeWorker)
+        end
     end 
 })
 sacrificeTab:CreateButton({ 
     Name = "Sacrifice Walrus (Once)", 
     Callback = function() 
-        pcall(function()
-            SacrificeRemote:InvokeServer("SacrificeWell", "Walrus")
-        end)
+        pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "Walrus")
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "Sacrifice",
             Text = "Walrus sacrificed!",
@@ -731,6 +696,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Maveryk Hub",
-    Text = "15x Eggs | Sacrifice 5s",
+    Text = "22x Eggs | Sacrifice Fixed",
     Duration = 3
 })
