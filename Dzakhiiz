@@ -327,35 +327,38 @@ local sacrificeActive = {
     walrus = false
 }
 local sacrificeThread = nil
-local function loadSummerZone()
+local function ensureSummerZone()
     pcall(function()
-        requestZoneMap("SummerEventZone")
+        ZonesRF:InvokeServer("RequestZoneMap", "SummerEventZone")
     end)
+    task.wait(0.5)
+end
+local function doSacrifice(petName)
+    local success, result = pcall(function()
+        return SacrificeRemote:InvokeServer("SacrificeWell", petName)
+    end)
+    if success then
+        print("Sacrificed " .. petName)
+    else
+        warn("Failed to sacrifice " .. petName)
+    end
 end
 local function sacrificeWorker()
-    loadSummerZone()
+    ensureSummerZone()
     while active do
         if sacrificeActive.queen then
-            pcall(function()
-                SacrificeRemote:InvokeServer("SacrificeWell", "Queen Bee")
-            end)
+            doSacrifice("Queen Bee")
         end
         if sacrificeActive.king then
-            pcall(function()
-                SacrificeRemote:InvokeServer("SacrificeWell", "King Bee")
-            end)
+            doSacrifice("King Bee")
         end
         if sacrificeActive.frozen then
-            pcall(function()
-                SacrificeRemote:InvokeServer("SacrificeWell", "Frozen Werewolf")
-            end)
+            doSacrifice("Frozen Werewolf")
         end
         if sacrificeActive.walrus then
-            pcall(function()
-                SacrificeRemote:InvokeServer("SacrificeWell", "Walrus")
-            end)
+            doSacrifice("Walrus")
         end
-        task.wait(3)
+        task.wait(5)
     end
 end
 local function updateSacrificeThread()
@@ -436,7 +439,7 @@ end
 local win = Rayfield:CreateWindow({
     Name = "Maveryk Hub - 15x Eggs",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "15x Eggs | Sacrifice 3s",
+    LoadingSubtitle = "15x Eggs | Sacrifice 5s",
     ConfigurationSaving = { Enabled = true, FolderName = "MaverykHub", FileName = "Config" },
     Theme = "Dark"
 })
@@ -592,8 +595,8 @@ eggTab:CreateButton({
     end
 })
 local sacrificeTab = win:CreateTab("Sacrifice")
-sacrificeTab:CreateSection("SACRIFICE LOOP - 3 SECONDS")
-sacrificeTab:CreateLabel("⚡ Ative uma vez e funciona a cada 3s ⚡")
+sacrificeTab:CreateSection("SACRIFICE LOOP - 5 SECONDS")
+sacrificeTab:CreateLabel("⚡ Ative uma vez e funciona a cada 5s ⚡")
 sacrificeTab:CreateSection("Mythical")
 sacrificeTab:CreateToggle({ 
     Name = "Queen Bee (Mythical) - Loop", 
@@ -728,6 +731,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Maveryk Hub",
-    Text = "15x Eggs | Sacrifice 3s",
+    Text = "15x Eggs | Sacrifice 5s",
     Duration = 3
 })
