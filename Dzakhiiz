@@ -191,7 +191,7 @@ local function attackWithMultiplePets(enemy)
     local pets = getPets()
     if #pets == 0 then return end
     for i = 1, math.min(5, #pets) do
-        safeCombat("AttackEnemy", enemy, pets[i])
+        pcall(CombatRemote.InvokeServer, CombatRemote, "AttackEnemy", enemy, pets[i])
     end
 end
 local function attackEnemy(zoneName, enemyName, needsRequest)
@@ -306,23 +306,54 @@ local function foodWorker(id)
     end
 end
 local sacrificeThread = nil
+local sacrificeCount = 0
+local sacrificeActive = false
 local function sacrificeWorker()
     pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", "SummerEventZone")
     task.wait(1)
-    while active do
+    sacrificeCount = 0
+    sacrificeActive = true
+    while active and sacrificeActive and sacrificeCount < 10 do
+        local sent = 0
         if config.sacrificeQueen then
             pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "Queen Bee")
+            sent = sent + 1
         end
         if config.sacrificeKing then
             pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "King Bee")
+            sent = sent + 1
         end
         if config.sacrificeFrozen then
             pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "Frozen Werewolf")
+            sent = sent + 1
         end
         if config.sacrificeWalrus then
             pcall(SacrificeRemote.InvokeServer, SacrificeRemote, "SacrificeWell", "Walrus")
+            sent = sent + 1
+        end
+        sacrificeCount = sacrificeCount + sent
+        if sacrificeCount >= 10 then
+            sacrificeActive = false
+            break
         end
         task.wait(5)
+    end
+    sacrificeThread = nil
+end
+local function startSacrifice()
+    if sacrificeThread then
+        task.cancel(sacrificeThread)
+        sacrificeThread = nil
+    end
+    sacrificeCount = 0
+    sacrificeActive = true
+    sacrificeThread = task.spawn(sacrificeWorker)
+end
+local function stopSacrifice()
+    sacrificeActive = false
+    if sacrificeThread then
+        task.cancel(sacrificeThread)
+        sacrificeThread = nil
     end
 end
 local function scanBosses()
@@ -355,10 +386,7 @@ local function stopAllThreads()
     bossThreads = {}
     enemyThreads = {}
     foodThreads = {}
-    if sacrificeThread then
-        task.cancel(sacrificeThread)
-        sacrificeThread = nil
-    end
+    stopSacrifice()
     activeBosses = {}
     petCacheValid = false
 end
@@ -390,7 +418,7 @@ local function start()
         task.spawn(function() foodWorker(i) end)
     end
     if config.sacrificeQueen or config.sacrificeKing or config.sacrificeFrozen or config.sacrificeWalrus then
-        sacrificeThread = task.spawn(sacrificeWorker)
+        startSacrifice()
     end
 end
 local function stop()
@@ -400,7 +428,7 @@ end
 local win = Rayfield:CreateWindow({
     Name = "Maveryk Hub - 22x Eggs",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "22x Eggs | Sacrifice 5s",
+    LoadingSubtitle = "Sacrifice 5s | Max 10",
     ConfigurationSaving = { Enabled = true, FolderName = "MaverykHub", FileName = "Config" },
     Theme = "Dark"
 })
@@ -417,6 +445,7 @@ local eggStatus = mainTab:CreateLabel("Eggs: OFF")
 local nestStatus = mainTab:CreateLabel("Nests: OFF")
 local sacrificeStatus = mainTab:CreateLabel("Sacrifice: OFF")
 local miscStatus = mainTab:CreateLabel("Misc: OFF")
+local sacrificeCountLabel = mainTab:CreateLabel("Sacrifice Count: 0/10")
 task.spawn(function()
     while true do
         task.wait(0.5)
@@ -438,6 +467,7 @@ task.spawn(function()
             local sacOn = config.sacrificeQueen or config.sacrificeKing or config.sacrificeFrozen or config.sacrificeWalrus
             sacrificeStatus:Set("Sacrifice: " .. (sacOn and "ON" or "OFF"))
             miscStatus:Set("Misc: " .. (config.doubleJump and "ON" or "OFF"))
+            sacrificeCountLabel:Set("Sacrifice Count: " .. sacrificeCount .. "/10")
         else
             statusLabel:Set("Status: Stopped")
             bossStatus:Set("Bosses: OFF")
@@ -447,6 +477,7 @@ task.spawn(function()
             nestStatus:Set("Nests: OFF")
             sacrificeStatus:Set("Sacrifice: OFF")
             miscStatus:Set("Misc: OFF")
+            sacrificeCountLabel:Set("Sacrifice Count: 0/10")
         end
     end
 end)
@@ -557,7 +588,7 @@ eggTab:CreateButton({
 })
 local sacrificeTab = win:CreateTab("Sacrifice")
 sacrificeTab:CreateSection("SACRIFICE LOOP - 5 SECONDS")
-sacrificeTab:CreateLabel("⚡ Roda junto com Eggs ⚡")
+sacrificeTab:CreateLabel("⚡ Max 10 calls, then stops ⚡")
 sacrificeTab:CreateSection("Mythical")
 sacrificeTab:CreateToggle({ 
     Name = "Queen Bee (Mythical) - Loop", 
@@ -565,8 +596,10 @@ sacrificeTab:CreateToggle({
     Callback = function(v) 
         config.sacrificeQueen = v
         if active then
-            if sacrificeThread then task.cancel(sacrificeThread) end
-            sacrificeThread = task.spawn(sacrificeWorker)
+            stopSacrifice()
+            if config.sacrificeQueen or config.sacrificeKing or config.sacrificeFrozen or config.sacrificeWalrus then
+                startSacrifice()
+            end
         end
     end 
 })
@@ -587,8 +620,10 @@ sacrificeTab:CreateToggle({
     Callback = function(v) 
         config.sacrificeFrozen = v
         if active then
-            if sacrificeThread then task.cancel(sacrificeThread) end
-            sacrificeThread = task.spawn(sacrificeWorker)
+            stopSacrifice()
+            if config.sacrificeQueen or config.sacrificeKing or config.sacrificeFrozen or config.sacrificeWalrus then
+                startSacrifice()
+            end
         end
     end 
 })
@@ -610,8 +645,10 @@ sacrificeTab:CreateToggle({
     Callback = function(v) 
         config.sacrificeKing = v
         if active then
-            if sacrificeThread then task.cancel(sacrificeThread) end
-            sacrificeThread = task.spawn(sacrificeWorker)
+            stopSacrifice()
+            if config.sacrificeQueen or config.sacrificeKing or config.sacrificeFrozen or config.sacrificeWalrus then
+                startSacrifice()
+            end
         end
     end 
 })
@@ -632,8 +669,10 @@ sacrificeTab:CreateToggle({
     Callback = function(v) 
         config.sacrificeWalrus = v
         if active then
-            if sacrificeThread then task.cancel(sacrificeThread) end
-            sacrificeThread = task.spawn(sacrificeWorker)
+            stopSacrifice()
+            if config.sacrificeQueen or config.sacrificeKing or config.sacrificeFrozen or config.sacrificeWalrus then
+                startSacrifice()
+            end
         end
     end 
 })
@@ -696,6 +735,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Maveryk Hub",
-    Text = "22x Eggs | Sacrifice Fixed",
+    Text = "22x Eggs | Sacrifice Max 10",
     Duration = 3
 })
