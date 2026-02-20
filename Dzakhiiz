@@ -52,37 +52,6 @@ local petCacheValid = false
 local nestsCache = nil
 local lastNestCacheUpdate = 0
 local startDebounce = false
-local requestCount = 0
-local lastReset = os.clock()
-local MAX_REQUESTS_PER_MINUTE = 50
-local requestHistory = {}
-local function antiFlood()
-    local now = os.clock()
-    for i = #requestHistory, 1, -1 do
-        if now - requestHistory[i] > 60 then
-            table.remove(requestHistory, i)
-        end
-    end
-    if #requestHistory > 100 then
-        task.wait(10)
-        return false
-    end
-    table.insert(requestHistory, now)
-    return true
-end
-local function checkRateLimit()
-    local now = os.clock()
-    if now - lastReset >= 60 then
-        requestCount = 0
-        lastReset = now
-    end
-    if requestCount >= MAX_REQUESTS_PER_MINUTE then
-        task.wait(5)
-        requestCount = 0
-        lastReset = os.clock()
-    end
-    requestCount = requestCount + 1
-end
 local bossZoneMap = {
     Naga = "Zone2B1",
     ["Lava Monster"] = "Zone5B1",
@@ -261,17 +230,17 @@ local function plantWorker(id)
                 for _ = 1, 9 do
                     pcall(PlantRemote.FireServer, PlantRemote, zone)
                 end
-                task.wait(0.001)
+                task.wait(0.0001)
             end
         end
-        task.wait()
+        task.wait(0.0005)
     end
 end
 local hatchThreads = {}
 local function hatchWorker(id)
     while active and hatchThreads[id] and config.autoHatch do
         pcall(HatchRemote.FireServer, HatchRemote)
-        task.wait()
+        task.wait(0.0001)
     end
 end
 local nestsThreads = {}
@@ -281,9 +250,10 @@ local function nestsWorker(id)
         if nests then
             for _, nest in ipairs(nests:GetChildren()) do
                 pcall(FeedRemote.FireServer, FeedRemote, nest)
+                task.wait(0.0001)
             end
         end
-        task.wait()
+        task.wait(0.0005)
     end
 end
 local bossThreads = {}
@@ -297,6 +267,7 @@ local function bossWorker(id)
                     if boss and boss.Parent then
                         pcall(CombatRemote.InvokeServer, CombatRemote, "AttackEnemy", boss, pets[idx])
                         idx = idx % #pets + 1
+                        task.wait(0.05)
                     end
                 end
             end
@@ -314,6 +285,7 @@ local function enemyWorker(id)
                 else
                     attackEnemy(enemy.zone, enemy.enemy, enemy.needsRequest)
                 end
+                task.wait(0.05)
             end
         end
         task.wait(config.enemiesSpeed)
@@ -331,6 +303,7 @@ local function foodWorker(id)
                         local pets = getPets()
                         for i = 1, math.min(5, #pets) do
                             pcall(CollectionRemote.InvokeServer, CollectionRemote, "CollectFood", f, pets[i])
+                            task.wait(0.01)
                         end
                     end
                 end
@@ -425,7 +398,7 @@ local function stopAllThreads()
     petCacheValid = false
 end
 local function updateEggThreads()
-    for i = 1, config.eggThreads do
+    for i = 1, 10 do
         plantThreads[i] = true
         task.spawn(function() plantWorker(i) end)
         hatchThreads[i] = true
@@ -462,9 +435,9 @@ local function stop()
     stopAllThreads()
 end
 local win = Rayfield:CreateWindow({
-    Name = "Maveryk Hub - 10x a 100x",
+    Name = "Maveryk Hub - 10x Otimizado",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "Eggs Ajustável | Stop Funcional",
+    LoadingSubtitle = "10x Eggs | Sem Travamento",
     ConfigurationSaving = { Enabled = true, FolderName = "MaverykHub", FileName = "Config" },
     Theme = "Dark"
 })
@@ -582,58 +555,23 @@ for _, name in ipairs(bossList) do
     })
 end
 local eggTab = win:CreateTab("Eggs")
-eggTab:CreateSection("EGGS CONFIGURÁVEL - 10x a 100x")
-eggTab:CreateLabel("⚠️ AVISO: 10-30 threads seguro, acima pode causar flood ⚠️")
+eggTab:CreateSection("EGGS 10x OTIMIZADAS")
+eggTab:CreateLabel("⚡ 10 THREADS POR FUNÇÃO ⚡")
+eggTab:CreateLabel("• Delay 0.0001s entre ações")
+eggTab:CreateLabel("• Velocidade constante sem lag")
 eggTab:CreateLabel(" ")
-eggTab:CreateSlider({ 
-    Name = "Threads (10-100)", 
-    Range = {10, 100}, 
-    Increment = 1, 
-    CurrentValue = config.eggThreads, 
-    Callback = function(v) 
-        config.eggThreads = v
-        if active then
-            stopAllThreads()
-            updateEggThreads()
-            for i = 1, config.bossThreads do
-                bossThreads[i] = true
-                task.spawn(function() bossWorker(i) end)
-            end
-            for i = 1, config.enemyThreads do
-                enemyThreads[i] = true
-                task.spawn(function() enemyWorker(i) end)
-            end
-            for i = 1, config.foodThreads do
-                foodThreads[i] = true
-                task.spawn(function() foodWorker(i) end)
-            end
-        end
-    end 
-})
-eggTab:CreateLabel(" ")
-eggTab:CreateLabel("⚡ CONFIGURAÇÃO ATUAL ⚡")
-local threadInfo = eggTab:CreateLabel("• Threads: " .. config.eggThreads)
-local plantInfo = eggTab:CreateLabel("• Plant: " .. config.eggThreads .. " threads")
-local hatchInfo = eggTab:CreateLabel("• Hatch: " .. config.eggThreads .. " threads")
-local nestsInfo = eggTab:CreateLabel("• Nests: " .. config.eggThreads .. " threads")
-task.spawn(function()
-    while true do
-        task.wait(1)
-        threadInfo:Set("• Threads: " .. config.eggThreads)
-        plantInfo:Set("• Plant: " .. config.eggThreads .. " threads")
-        hatchInfo:Set("• Hatch: " .. config.eggThreads .. " threads")
-        nestsInfo:Set("• Nests: " .. config.eggThreads .. " threads")
-    end
-end)
 eggTab:CreateSection("PLANT")
 eggTab:CreateToggle({ Name = "Enable Auto Plant", CurrentValue = config.autoPlant, Callback = function(v) config.autoPlant = v end })
 eggTab:CreateLabel("• 9 eggs per zone")
+eggTab:CreateLabel("• 10 threads")
 eggTab:CreateSection("HATCH")
 eggTab:CreateToggle({ Name = "Enable Auto Hatch", CurrentValue = config.autoHatch, Callback = function(v) config.autoHatch = v end })
 eggTab:CreateLabel("• 1 hatch per cycle")
+eggTab:CreateLabel("• 10 threads")
 eggTab:CreateSection("NESTS")
 eggTab:CreateToggle({ Name = "Enable Auto Nests", CurrentValue = config.autoNests, Callback = function(v) config.autoNests = v end })
 eggTab:CreateLabel("• All nests per cycle")
+eggTab:CreateLabel("• 10 threads")
 eggTab:CreateSection("Select Eggs to Plant")
 for _, egg in ipairs(eggData) do
     eggTab:CreateToggle({
@@ -809,6 +747,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "Maveryk Hub",
-    Text = "10x a 100x Eggs | Stop Funcional",
+    Text = "10x Otimizado | Sem Lag",
     Duration = 3
 })
