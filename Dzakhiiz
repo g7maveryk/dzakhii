@@ -1,1 +1,852 @@
 
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local LocalPlayer = Players.LocalPlayer
+local Remotes = ReplicatedStorage and ReplicatedStorage:FindFirstChild("Remotes")
+local Functions = Remotes and Remotes:FindFirstChild("Functions")
+local Events = Remotes and Remotes:FindFirstChild("Events")
+
+local CombatRemote = Functions and Functions:FindFirstChild("CombatRF")
+local CollectionRemote = Functions and Functions:FindFirstChild("CollectionRF")
+local HatchRemote = Events and Events:FindFirstChild("HatchEggEvent")
+local PlantRemote = Events and Events:FindFirstChild("PlantEggEvent")
+local FeedRemote = Events and Events:FindFirstChild("FeedEggEvent")
+local SacrificeRemote = Functions and Functions:FindFirstChild("SacrificeFunction")
+local ZonesRF = Functions and Functions:FindFirstChild("ZonesRF")
+
+local active = false
+local eggsSelected = {}
+local bossEnabled = {}
+local activeBosses = {}
+local jumpConnection = nil
+local jumpCount = 0
+
+local cache = {
+    pets = { value = nil, lastUpdate = 0, updateInterval = 0.5 },
+    nests = { value = nil, lastUpdate = 0, updateInterval = 10 },
+    zones = {},
+}
+
+local enemiesBuffer = {}
+local foodsBuffer = {}
+local zoneList = {
+    "SummerEvent1", "WinterEvent1", "EleEgg1", "6", "4", "15", "10", "27",
+    "30", "11", "34", "12.1", "1", "3", "7", "8", "9", "12", "13", "14",
+    "Boss1", "Boss2", "Boss4",
+    "SummerEventZone", "WinterEventZone", "Zone12.1", "ElementEventZone1",
+    "Zone2", "Zone5", "Zone10", "Zone12",
+    "Zone2B1", "Zone5B1", "Zone10B1", "Zone12B1", "Zone12B3", "Zone12B2",
+    "SummerEventZoneB1", "WinterEventZoneB1", "ElementEventZoneB1"
+}
+
+for _, z in ipairs(zoneList) do
+    local success, result = pcall(function()
+        return Workspace.Zones:FindFirstChild(z)
+    end)
+    if success and result then
+        cache.zones[z] = result
+    end
+end
+
+local bossZoneMap = {
+    Naga = "Zone2B1",
+    ["Lava Monster"] = "Zone5B1",
+    ["Tiki Monster"] = "Zone10B1",
+    ["The Frozen Ancient"] = "Zone12B1",
+    ["The Big 100M"] = "Zone12B3",
+    ["The Ethereal Everia"] = "Zone12B2",
+    ["Hornet Boss"] = "SummerEventZoneB1",
+    ["The Ice Serpent"] = "WinterEventZoneB1",
+    ["Great Sphinx"] = "ElementEventZoneB1",
+}
+
+local enemyList = {
+    { name = "Summer", zone = "SummerEventZone", attackAll = true },
+    { name = "Winter", zone = "WinterEventZone", attackAll = true },
+    { name = "Sphinx (Evil Eagle)", zone = "ElementEventZone1", enemy = "Evil Eagle", needsRequest = true },
+    { name = "Cursed Mummy", zone = "Zone2", enemy = "Cursed Mummy", needsRequest = true },
+    { name = "Crazy Unicorn", zone = "Zone5", enemy = "Crazy Unicorn", needsRequest = true },
+    { name = "Terror Tree", zone = "Zone10", enemy = "Terror Tree", needsRequest = true },
+    { name = "Draco's Guard", zone = "Zone12", enemy = "Draco's Guard", needsRequest = true },
+    { name = "Possessed Slime", zone = "Zone12.1", enemy = "Possessed Slime", needsRequest = true },
+}
+
+local enemyEnabled = {}
+for i, _ in ipairs(enemyList) do enemyEnabled[i] = false end
+
+local foodZones = {
+    { name = "Crystal Food", zone = "Zone12.1", enabled = false },
+    { name = "Draco Food", zone = "Zone12", enabled = false },
+}
+
+local speedModes = {
+    LIGHT = "light",
+    NORMAL = "normal",
+    ULTRA = "ultra"
+}
+
+local config = {
+    farmBosses = false,
+    farmEnemies = false,
+    farmFood = false,
+    autoPlant = false,
+    autoHatch = false,
+    autoNests = false,
+    doubleJump = false,
+    wallspeed = 16,
+    plantSpeed = 0.001,
+    hatchSpeed = 0.001,
+    nestsSpeed = 0.001,
+    speedMode = speedModes.LIGHT,
+    
+    -- Delays personalizados (enemies aumentado um pouco)
+    bossDelay = 6.0,
+    bossAttackDelay = 0.9,
+    enemyDelay = 1.8,
+    foodDelay = 0.5,
+    eggDelay = 1.5,
+}
+
+local function getDelays()
+    if config.speedMode == speedModes.LIGHT then
+        return {
+            bossDelay = config.bossDelay,
+            enemyDelay = config.enemyDelay,
+            foodDelay = config.foodDelay,
+            bossAttackDelay = config.bossAttackDelay,
+            eggDelay = config.eggDelay,
+        }
+    elseif config.speedMode == speedModes.NORMAL then
+        return {
+            bossDelay = 1.5,
+            enemyDelay = 1.2,
+            foodDelay = 2.0,
+            bossAttackDelay = 0.8,
+            eggDelay = 0.8,
+        }
+    else
+        return {
+            bossDelay = 0.3,
+            enemyDelay = 0.3,
+            foodDelay = 1.2,
+            bossAttackDelay = 0.2,
+            eggDelay = 0.001,
+        }
+    end
+end
+
+local bossList = {
+    "Naga", "Lava Monster", "Tiki Monster",
+    "The Frozen Ancient", "The Big 100M", "The Ethereal Everia",
+    "Hornet Boss", "The Ice Serpent", "Great Sphinx"
+}
+for _, name in ipairs(bossList) do bossEnabled[name] = true end
+
+local eggData = {
+    { name = "Summer Egg", zone = "SummerEvent1" },
+    { name = "Winter Egg", zone = "WinterEvent1" },
+    { name = "Sphinx Egg", zone = "EleEgg1" },
+    { name = "Desert Egg", zone = "6" },
+    { name = "Swamp Egg", zone = "4" },
+    { name = "Sky Egg", zone = "15" },
+    { name = "Cosmos Egg", zone = "10" },
+    { name = "Void Egg", zone = "27" },
+    { name = "Tiki Egg", zone = "30" },
+    { name = "Tiki Island Egg", zone = "11" },
+    { name = "Draco Egg", zone = "34" },
+    { name = "Crystal Egg", zone = "12.1" },
+    { name = "Octopus Egg", zone = "30" },
+    { name = "Forest Egg", zone = "1" },
+    { name = "Frozen Egg", zone = "3" },
+    { name = "Magma Egg", zone = "7" },
+    { name = "Atlantis Egg", zone = "8" },
+    { name = "Aqua Egg", zone = "9" },
+    { name = "Egg Of Oblivion", zone = "12" },
+    { name = "Mythical Egg", zone = "13" },
+    { name = "Legendary Egg", zone = "14" },
+}
+
+local function getZone(name)
+    return cache.zones[name]
+end
+
+local function getPets()
+    local now = os.clock()
+    if not cache.pets.value or now - cache.pets.lastUpdate > cache.pets.updateInterval then
+        if LocalPlayer.Character then
+            local petsObj = LocalPlayer.Character:FindFirstChild("Pets")
+            cache.pets.value = petsObj and petsObj:GetChildren() or {}
+        else
+            cache.pets.value = {}
+        end
+        cache.pets.lastUpdate = now
+    end
+    return cache.pets.value
+end
+
+local function getNests()
+    local now = os.clock()
+    if not cache.nests.value or now - cache.nests.lastUpdate > cache.nests.updateInterval then
+        cache.nests.value = Workspace:FindFirstChild("Nests")
+        cache.nests.lastUpdate = now
+    end
+    return cache.nests.value
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    cache.pets.lastUpdate = 0
+end)
+
+local function safeAttackEnemy(enemy, pet)
+    if CombatRemote then
+        pcall(CombatRemote.InvokeServer, CombatRemote, "AttackEnemy", enemy, pet)
+    end
+end
+
+local function safeCollectFood(food, pet)
+    if CollectionRemote then
+        pcall(CollectionRemote.InvokeServer, CollectionRemote, "CollectFood", food, pet)
+    end
+end
+
+local function attackEnemies(enemies)
+    local pets = getPets()
+    local petCount = #pets
+    if petCount == 0 or #enemies == 0 then return end
+    
+    for i = 1, math.min(petCount, #enemies) do
+        local pet = pets[i]
+        local enemy = enemies[i]
+        task.spawn(function()
+            safeAttackEnemy(enemy, pet)
+        end)
+    end
+end
+
+local function attackAllEnemies(zoneName, needsRequest)
+    if needsRequest and ZonesRF then
+        pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", zoneName)
+        task.wait(0.05)
+    end
+    local zone = Workspace.Zones:FindFirstChild(zoneName)
+    if zone and zone:FindFirstChild("Enemies") then
+        local enemies = zone.Enemies:GetChildren()
+        attackEnemies(enemies)
+    end
+end
+
+local function attackSpecificEnemy(zoneName, enemyName, needsRequest)
+    if needsRequest and ZonesRF then
+        pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", zoneName)
+        task.wait(0.05)
+    end
+    
+    local zone = Workspace.Zones:FindFirstChild(zoneName)
+    if not zone then
+        zone = getZone(zoneName)
+    end
+    
+    if zone and zone:FindFirstChild("Enemies") then
+        local enemy = zone.Enemies:FindFirstChild(enemyName)
+        if enemy then
+            local pets = getPets()
+            for _, pet in ipairs(pets) do
+                task.spawn(function()
+                    safeAttackEnemy(enemy, pet)
+                end)
+            end
+            return true
+        end
+    end
+    return false
+end
+
+local function attackBosses()
+    if #activeBosses == 0 then return end
+    local pets = getPets()
+    if #pets == 0 then return end
+    
+    local delays = getDelays()
+    
+    for i, boss in ipairs(activeBosses) do
+        if boss and boss.Parent then
+            local pet = pets[1]
+            task.spawn(function()
+                safeAttackEnemy(boss, pet)
+            end)
+            task.wait(delays.bossAttackDelay)
+        end
+    end
+end
+
+local function collectFoodFromZone(zoneName)
+    local zone = Workspace.Zones:FindFirstChild(zoneName)
+    if not zone then return end
+    
+    local foodSpawns = zone:FindFirstChild("FoodSpawns")
+    if not foodSpawns then return end
+    
+    local foods = foodSpawns:GetChildren()
+    if #foods == 0 then return end
+    
+    local pets = getPets()
+    if #pets == 0 then return end
+    
+    for foodIndex, food in ipairs(foods) do
+        local pet = pets[((foodIndex-1) % #pets) + 1]
+        task.spawn(function()
+            safeCollectFood(food, pet)
+        end)
+    end
+end
+
+local function bossesWorker()
+    local delays = getDelays()
+    while active do
+        if config.farmBosses and #activeBosses > 0 then
+            attackBosses()
+        end
+        task.wait(delays.bossDelay)
+    end
+end
+
+local function enemiesWorker()
+    local delays = getDelays()
+    while active do
+        if config.farmEnemies then
+            for idx, enemy in ipairs(enemyList) do
+                if enemyEnabled[idx] then
+                    if enemy.attackAll then
+                        attackAllEnemies(enemy.zone, enemy.needsRequest)
+                    else
+                        local success = attackSpecificEnemy(enemy.zone, enemy.enemy, enemy.needsRequest)
+                        if not success and enemy.needsRequest then
+                            pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", enemy.zone)
+                            task.wait(0.1)
+                            attackSpecificEnemy(enemy.zone, enemy.enemy, false)
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(delays.enemyDelay)
+    end
+end
+
+local function foodWorker()
+    local delays = getDelays()
+    while active do
+        if config.farmFood then
+            for _, foodZone in ipairs(foodZones) do
+                if foodZone.enabled then
+                    collectFoodFromZone(foodZone.zone)
+                end
+            end
+        end
+        task.wait(delays.foodDelay)
+    end
+end
+
+local function plantWorker()
+    local delays = getDelays()
+    while active do
+        if config.autoPlant and #eggsSelected > 0 and PlantRemote then
+            for _, zone in ipairs(eggsSelected) do
+                for _ = 1, 9 do
+                    task.spawn(function()
+                        pcall(PlantRemote.FireServer, PlantRemote, zone)
+                    end)
+                end
+            end
+        end
+        task.wait(delays.eggDelay)
+    end
+end
+
+local function hatchWorker()
+    local delays = getDelays()
+    while active do
+        if config.autoHatch and HatchRemote then
+            for i = 1, 5 do
+                task.spawn(function()
+                    pcall(HatchRemote.FireServer, HatchRemote)
+                end)
+            end
+        end
+        task.wait(delays.eggDelay)
+    end
+end
+
+local function nestsWorker()
+    local delays = getDelays()
+    while active do
+        if config.autoNests and FeedRemote then
+            local nests = getNests()
+            if nests then
+                for _, nest in ipairs(nests:GetChildren()) do
+                    for i = 1, 5 do
+                        task.spawn(function()
+                            pcall(FeedRemote.FireServer, FeedRemote, nest)
+                        end)
+                    end
+                end
+            end
+        end
+        task.wait(delays.eggDelay)
+    end
+end
+
+local function removeHatchAnimation()
+    local ev = ReplicatedStorage and ReplicatedStorage:FindFirstChild("Remotes") 
+            and ReplicatedStorage.Remotes:FindFirstChild("Events") 
+            and ReplicatedStorage.Remotes.Events:FindFirstChild("HatchAnimationEvent")
+    if ev then
+        ev:Destroy()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Animation Removed",
+            Text = "HatchAnimationEvent destroyed!",
+            Duration = 3
+        })
+    else
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Error",
+            Text = "HatchAnimationEvent not found.",
+            Duration = 3
+        })
+    end
+end
+
+local function sacrificePet(petName)
+    if SacrificeRemote then
+        local success = pcall(function()
+            SacrificeRemote:InvokeServer("SacrificeWell", petName)
+        end)
+        if success then
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "Sacrifice",
+                Text = petName .. " sacrificed!",
+                Duration = 1
+            })
+        end
+        return success
+    end
+    return false
+end
+
+local function scanBosses()
+    if not config.farmBosses then
+        activeBosses = {}
+        return
+    end
+    local newActive = {}
+    for _, name in ipairs(bossList) do
+        if bossEnabled[name] then
+            local zone = Workspace.Zones:FindFirstChild(bossZoneMap[name])
+            if zone and zone:FindFirstChild("Enemies") then
+                local enemy = zone.Enemies:FindFirstChild(name)
+                if enemy then
+                    table.insert(newActive, enemy)
+                end
+            end
+        end
+    end
+    activeBosses = newActive
+end
+
+local function bossScanWorker()
+    while active do
+        scanBosses()
+        task.wait(15)
+    end
+end
+
+local function spawnWorkers(workerFunc, count)
+    for i = 1, count do
+        task.spawn(workerFunc)
+    end
+end
+
+local function start()
+    if active then return end
+    active = true
+    scanBosses()
+    
+    if ZonesRF then
+        pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", "Zone12.1")
+        pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", "SummerEventZone")
+        pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", "WinterEventZone")
+        pcall(ZonesRF.InvokeServer, ZonesRF, "RequestZoneMap", "ElementEventZone1")
+    end
+    
+    spawnWorkers(plantWorker, 1)
+    spawnWorkers(hatchWorker, 1)
+    spawnWorkers(nestsWorker, 1)
+    spawnWorkers(bossesWorker, 1)
+    spawnWorkers(enemiesWorker, 1)
+    spawnWorkers(foodWorker, 1)
+    task.spawn(bossScanWorker)
+    
+    local modeText = "Modo Leve (Personalizado)"
+    if config.speedMode == speedModes.NORMAL then
+        modeText = "Modo Normal"
+    elseif config.speedMode == speedModes.ULTRA then
+        modeText = "Modo Ultra Rápido"
+    end
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Maveryk Hub",
+        Text = "Farm iniciado! " .. modeText,
+        Duration = 3
+    })
+end
+
+local function stop()
+    active = false
+    activeBosses = {}
+    task.wait(1)
+end
+
+local win = Rayfield:CreateWindow({
+    Name = "Maveryk Hub",
+    LoadingTitle = "Pet Swarm Sim",
+    LoadingSubtitle = "Farm Completo",
+    ConfigurationSaving = { Enabled = true, FolderName = "MaverykHub", FileName = "Config" },
+    Theme = "Dark"
+})
+
+local mainTab = win:CreateTab("Main")
+mainTab:CreateSection("Control")
+mainTab:CreateButton({ Name = "Start Farming", Callback = start })
+mainTab:CreateButton({ Name = "Stop Farming", Callback = stop })
+
+mainTab:CreateSection("Status")
+local statusLabel = mainTab:CreateLabel("Status: Stopped")
+local bossStatus = mainTab:CreateLabel("Bosses: OFF")
+local enemyStatus = mainTab:CreateLabel("Enemies: OFF")
+local foodStatus = mainTab:CreateLabel("Food: OFF")
+local eggStatus = mainTab:CreateLabel("Eggs: OFF")
+local speedModeLabel = mainTab:CreateLabel("Modo: Leve (Personalizado)")
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if active then
+            statusLabel:Set("Status: Active")
+            bossStatus:Set("Bosses: " .. (config.farmBosses and "ON" or "OFF"))
+            local anyEnemy = false
+            for _, enabled in pairs(enemyEnabled) do
+                if enabled then anyEnemy = true break end
+            end
+            enemyStatus:Set("Enemies: " .. (anyEnemy and "ON" or "OFF"))
+            local anyFood = false
+            for _, foodZone in ipairs(foodZones) do
+                if foodZone.enabled then anyFood = true break end
+            end
+            foodStatus:Set("Food: " .. (anyFood and "ON" or "OFF"))
+            eggStatus:Set("Eggs: " .. ((config.autoPlant or config.autoHatch) and "ON" or "OFF"))
+        else
+            statusLabel:Set("Status: Stopped")
+            bossStatus:Set("Bosses: OFF")
+            enemyStatus:Set("Enemies: OFF")
+            foodStatus:Set("Food: OFF")
+            eggStatus:Set("Eggs: OFF")
+        end
+        
+        local modeText = "Modo Leve (Personalizado)"
+        if config.speedMode == speedModes.NORMAL then
+            modeText = "Modo Normal"
+        elseif config.speedMode == speedModes.ULTRA then
+            modeText = "Modo Ultra Rápido"
+        end
+        speedModeLabel:Set("Modo: " .. modeText)
+    end
+end)
+
+mainTab:CreateSection("Credits")
+mainTab:CreateLabel("developed by Maveryk1t")
+mainTab:CreateLabel("yt: Maveryk1t")
+mainTab:CreateLabel("discord: knzd1")
+
+local speedTab = win:CreateTab("Velocidade")
+speedTab:CreateSection("Modo de Farm")
+
+speedTab:CreateToggle({
+    Name = "Modo Leve (Personalizado)",
+    CurrentValue = config.speedMode == speedModes.LIGHT,
+    Callback = function(v)
+        if v then
+            config.speedMode = speedModes.LIGHT
+        end
+    end
+})
+
+speedTab:CreateToggle({
+    Name = "Modo Normal (Equilibrado)",
+    CurrentValue = config.speedMode == speedModes.NORMAL,
+    Callback = function(v)
+        if v then
+            config.speedMode = speedModes.NORMAL
+        end
+    end
+})
+
+speedTab:CreateToggle({
+    Name = "Modo Ultra Rápido (Mais Lag)",
+    CurrentValue = config.speedMode == speedModes.ULTRA,
+    Callback = function(v)
+        if v then
+            config.speedMode = speedModes.ULTRA
+        end
+    end
+})
+
+speedTab:CreateSection("Configurações do Modo Leve")
+
+speedTab:CreateSlider({
+    Name = "Boss - Delay entre ciclos",
+    Range = {1, 10},
+    Increment = 0.5,
+    CurrentValue = config.bossDelay,
+    Callback = function(v) config.bossDelay = v end
+})
+
+speedTab:CreateSlider({
+    Name = "Boss - Delay entre ataques",
+    Range = {0.1, 3},
+    Increment = 0.1,
+    CurrentValue = config.bossAttackDelay,
+    Callback = function(v) config.bossAttackDelay = v end
+})
+
+speedTab:CreateSlider({
+    Name = "Enemies - Delay entre ciclos",
+    Range = {0.5, 5},
+    Increment = 0.1,
+    CurrentValue = config.enemyDelay,
+    Callback = function(v) config.enemyDelay = v end
+})
+
+speedTab:CreateSlider({
+    Name = "Food - Delay entre ciclos",
+    Range = {0.1, 3},
+    Increment = 0.1,
+    CurrentValue = config.foodDelay,
+    Callback = function(v) config.foodDelay = v end
+})
+
+speedTab:CreateSlider({
+    Name = "Eggs - Delay entre ciclos",
+    Range = {0.1, 5},
+    Increment = 0.1,
+    CurrentValue = config.eggDelay,
+    Callback = function(v) config.eggDelay = v end
+})
+
+speedTab:CreateSection("Descrição dos Modos")
+
+speedTab:CreateLabel("🌱 Modo Leve (Personalizado):")
+speedTab:CreateLabel("• Bosses: " .. config.bossDelay .. "s entre ciclos, " .. config.bossAttackDelay .. "s entre ataques")
+speedTab:CreateLabel("• Enemies: " .. config.enemyDelay .. "s entre ciclos")
+speedTab:CreateLabel("• Food: " .. config.foodDelay .. "s entre ciclos")
+speedTab:CreateLabel("• Eggs: " .. config.eggDelay .. "s entre ciclos")
+speedTab:CreateLabel("• Você pode ajustar todos os valores acima")
+
+speedTab:CreateLabel("📌 Modo Normal:")
+speedTab:CreateLabel("• Bosses: 1.5s entre ciclos, 0.8s entre ataques")
+speedTab:CreateLabel("• Enemies: 1.2s entre ciclos")
+speedTab:CreateLabel("• Food: 2.0s entre ciclos")
+speedTab:CreateLabel("• Eggs: 0.8s entre ciclos")
+
+speedTab:CreateLabel("⚡ Modo Ultra Rápido:")
+speedTab:CreateLabel("• Bosses: 0.3s entre ciclos, 0.2s entre ataques")
+speedTab:CreateLabel("• Enemies: 0.3s entre ciclos")
+speedTab:CreateLabel("• Food: 1.2s entre ciclos")
+speedTab:CreateLabel("• Eggs: 0.001s entre ciclos")
+
+local enemiesTab = win:CreateTab("Enemies")
+enemiesTab:CreateSection("Enemy Farming")
+enemiesTab:CreateToggle({ Name = "Enable Enemies", CurrentValue = config.farmEnemies, Callback = function(v) config.farmEnemies = v end })
+
+enemiesTab:CreateSection("Event Enemies")
+enemiesTab:CreateToggle({ Name = "Summer", CurrentValue = enemyEnabled[1], Callback = function(v) enemyEnabled[1] = v end })
+enemiesTab:CreateToggle({ Name = "Winter", CurrentValue = enemyEnabled[2], Callback = function(v) enemyEnabled[2] = v end })
+enemiesTab:CreateToggle({ Name = "Sphinx (Evil Eagle)", CurrentValue = enemyEnabled[3], Callback = function(v) enemyEnabled[3] = v end })
+
+enemiesTab:CreateSection("Desert")
+enemiesTab:CreateToggle({ Name = "Cursed Mummy", CurrentValue = enemyEnabled[4], Callback = function(v) enemyEnabled[4] = v end })
+
+enemiesTab:CreateSection("Sky")
+enemiesTab:CreateToggle({ Name = "Crazy Unicorn", CurrentValue = enemyEnabled[5], Callback = function(v) enemyEnabled[5] = v end })
+
+enemiesTab:CreateSection("Tiki")
+enemiesTab:CreateToggle({ Name = "Terror Tree", CurrentValue = enemyEnabled[6], Callback = function(v) enemyEnabled[6] = v end })
+
+enemiesTab:CreateSection("Draco")
+enemiesTab:CreateToggle({ Name = "Draco's Guard", CurrentValue = enemyEnabled[7], Callback = function(v) enemyEnabled[7] = v end })
+
+enemiesTab:CreateSection("Crystal Island")
+enemiesTab:CreateToggle({ Name = "Possessed Slime", CurrentValue = enemyEnabled[8], Callback = function(v) enemyEnabled[8] = v end })
+
+local foodTab = win:CreateTab("Food")
+foodTab:CreateSection("Food Zones")
+foodTab:CreateToggle({ Name = "Enable Food", CurrentValue = config.farmFood, Callback = function(v) config.farmFood = v end })
+foodTab:CreateToggle({ Name = "Crystal Food", CurrentValue = foodZones[1].enabled, Callback = function(v) foodZones[1].enabled = v end })
+foodTab:CreateToggle({ Name = "Draco Food", CurrentValue = foodZones[2].enabled, Callback = function(v) foodZones[2].enabled = v end })
+
+local bossTab = win:CreateTab("Bosses")
+bossTab:CreateSection("Boss Control")
+bossTab:CreateToggle({ Name = "Enable Boss Farming", CurrentValue = config.farmBosses, Callback = function(v) config.farmBosses = v end })
+bossTab:CreateToggle({ Name = "Enable All Bosses", CurrentValue = true, Callback = function(v)
+    for _, name in ipairs(bossList) do bossEnabled[name] = v end
+end })
+
+bossTab:CreateSection("Boss List")
+for _, name in ipairs(bossList) do
+    bossTab:CreateToggle({
+        Name = name,
+        CurrentValue = bossEnabled[name],
+        Callback = function(v) bossEnabled[name] = v end
+    })
+end
+
+local eggTab = win:CreateTab("Eggs")
+eggTab:CreateSection("Eggs Control")
+eggTab:CreateToggle({ Name = "Auto Plant", CurrentValue = config.autoPlant, Callback = function(v) config.autoPlant = v end })
+eggTab:CreateToggle({ Name = "Auto Hatch", CurrentValue = config.autoHatch, Callback = function(v) config.autoHatch = v end })
+eggTab:CreateToggle({ Name = "Auto Nests", CurrentValue = config.autoNests, Callback = function(v) config.autoNests = v end })
+
+eggTab:CreateSection("Optimization")
+eggTab:CreateButton({
+    Name = "Remove Hatch Animation",
+    Callback = removeHatchAnimation
+})
+
+eggTab:CreateSection("Select Eggs")
+for _, egg in ipairs(eggData) do
+    eggTab:CreateToggle({
+        Name = egg.name,
+        CurrentValue = false,
+        Callback = function(val)
+            if val then
+                if not table.find(eggsSelected, egg.zone) then
+                    table.insert(eggsSelected, egg.zone)
+                end
+            else
+                local idx = table.find(eggsSelected, egg.zone)
+                if idx then table.remove(eggsSelected, idx) end
+            end
+        end
+    })
+end
+
+local sacrificeTab = win:CreateTab("Sacrifice")
+
+sacrificeTab:CreateSection("Summer Event")
+sacrificeTab:CreateButton({ 
+    Name = "Queen Bee - Once", 
+    Callback = function() 
+        sacrificePet("Queen Bee")
+    end 
+})
+sacrificeTab:CreateButton({ 
+    Name = "King Bee - Once", 
+    Callback = function() 
+        sacrificePet("King Bee")
+    end 
+})
+
+sacrificeTab:CreateSection("Winter Event")
+sacrificeTab:CreateButton({ 
+    Name = "Frozen Werewolf - Once", 
+    Callback = function() 
+        sacrificePet("Frozen Werewolf")
+    end 
+})
+sacrificeTab:CreateButton({ 
+    Name = "Walrus - Once", 
+    Callback = function() 
+        sacrificePet("Walrus")
+    end 
+})
+
+sacrificeTab:CreateSection("Sphinx Event")
+sacrificeTab:CreateButton({ 
+    Name = "Fennec Fox - Once", 
+    Callback = function() 
+        sacrificePet("Fennec Fox")
+    end 
+})
+sacrificeTab:CreateButton({ 
+    Name = "Mystic Camel - Once", 
+    Callback = function() 
+        sacrificePet("Mystic Camel")
+    end 
+})
+
+sacrificeTab:CreateSection("Crystal Island")
+sacrificeTab:CreateButton({ 
+    Name = "Orb - Once", 
+    Callback = function() 
+        sacrificePet("Orb")
+    end 
+})
+
+local miscTab = win:CreateTab("Misc")
+miscTab:CreateSection("Movement")
+miscTab:CreateToggle({ Name = "Infinite Double Jump", CurrentValue = config.doubleJump, Callback = function(v)
+    config.doubleJump = v
+    if v then
+        local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+            jumpCount = 0
+            if not jumpConnection then
+                jumpConnection = humanoid.Jumping:Connect(function()
+                    jumpCount = jumpCount + 1
+                    if jumpCount >= 2 then
+                        humanoid.Jump = true
+                        jumpCount = 0
+                    end
+                end)
+            end
+        end
+    elseif jumpConnection then
+        jumpConnection:Disconnect()
+        jumpConnection = nil
+        jumpCount = 0
+    end
+end })
+
+miscTab:CreateSlider({ Name = "Walk Speed", Range = {16, 100}, Increment = 1, CurrentValue = config.wallspeed, Callback = function(v)
+    config.wallspeed = v
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.WalkSpeed = v
+    end
+end })
+
+miscTab:CreateSection("Hotkey")
+miscTab:CreateLabel("Press H to hide/show GUI")
+
+local guiVisible = true
+UserInputService.InputBegan:Connect(function(input, gp)
+    if not gp and input.KeyCode == Enum.KeyCode.H then
+        guiVisible = not guiVisible
+        for _, v in pairs(win:GetChildren()) do
+            if v:IsA("ScreenGui") then
+                v.Enabled = guiVisible
+            end
+        end
+    end
+end)
+
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "Maveryk Hub",
+    Text = "Carregado com sucesso!",
+    Duration = 3
+})
